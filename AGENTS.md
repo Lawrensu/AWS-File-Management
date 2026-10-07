@@ -44,7 +44,7 @@ Rules for every coding agent and every human on this repo. `CLAUDE.md` and
 - Index: `SqliteStore` on SQLite, rank_bm25 and numpy, behind `IndexStore`.
 - AWS: Textract as a stretch, and Bedrock.
 - Embeddings: Cohere Embed Multilingual v3 (`cohere.embed-multilingual-v3`, 1024 dims) on Bedrock in `ap-southeast-1`, via boto3. Titan v2 is not offered there. Documents embed as `search_document`; API code embeds questions with `input_type="query"`.
-- Claude: only through `engine/llm.py`. It uses the `anthropic` SDK's `AnthropicBedrockMantle(aws_region=...)` by default, or boto3 Converse when `BEDROCK_CLIENT=converse`. Model IDs are in `.env`.
+- Claude: only through `engine/llm.py`. `.env` sets `BEDROCK_CLIENT=converse`, boto3 Converse with global inference profile IDs. The Mantle client returned 404 for every Claude model on this account. Model IDs are in `.env`.
 - Bedrock Claude is blocked until AWS approves the Anthropic use case form, so Groq serves today. When Bedrock starts working it takes over with no code change.
 - Region is in `.env`. The default is `ap-southeast-1`. Confirm model access in the console.
 - Fallback: Groq free tier for tagging and answers when Bedrock fails, via `GROQ_API_KEY`, inside `engine/llm.py`. No embedding fallback; search drops to BM25 only.

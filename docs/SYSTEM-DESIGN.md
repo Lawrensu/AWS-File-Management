@@ -130,7 +130,7 @@ Cross sectional view of the application:
 - Tags run once per document on the cheapest capable model: cost stays low.
 - BM25 plus vectors with RRF: keywords catch exact terms, vectors catch cross-language matches.
 - Cohere Embed Multilingual v3 for embeddings: Titan v2 is not offered in `ap-southeast-1`, and staying in that region keeps data close to Sarawak. It is multilingual and has the same 1024 dimensions, so the contracts and the index do not change.
-- Claude model IDs are pending a retest after AWS account verification.
+- Claude runs through Bedrock Converse with global profile IDs: Haiku 4.5 for tags, Sonnet 4.6 for answers. Groq answers while the new account's quota is throttled.
 - Supersession is detected at ingest: the old document is badged and ranked lower, not removed.
 - Tags and embeddings are cached by content hash: re-ingest costs nothing.
 - Answers are capped at 8 chunks: cost and latency stay bounded.

@@ -201,8 +201,9 @@ Code in `engine/index/`. All access goes through `IndexStore`.
 	- Fallback to the next provider happens only before the first token. If Bedrock fails mid-stream, the exception is raised
 - Circuit breaker: after a Bedrock failure for a role, Bedrock is skipped for that role for `LLM_BEDROCK_COOLDOWN` seconds (default 300), so every call does not pay the failure latency. The cooldown is ignored when Groq is not available, because there is nothing else to try
 - `BEDROCK_CLIENT` picks the Bedrock client:
-	- `mantle` (default): the `anthropic` SDK's `AnthropicBedrockMantle(aws_region=AWS_REGION)`
-	- `converse`: boto3 `bedrock-runtime` `converse` and `converse_stream`
+	- `converse`, set in `.env`: boto3 `bedrock-runtime` `converse` and `converse_stream`, with global inference profile IDs: Claude Haiku 4.5 for `tag`, Claude Sonnet 4.6 for `answer`
+	- `mantle`, the code default when unset: the `anthropic` SDK's `AnthropicBedrockMantle(aws_region=AWS_REGION)`. It returned 404 for every Claude model on this account, so it is not used
+	- Claude Sonnet 5.5 is not available to this account. New accounts also start with a low request quota, so Bedrock may throttle and Groq answers until the quota rises
 - Config comes from `.env`, never hardcoded: `AWS_REGION`, `BEDROCK_TAG_MODEL` (Claude Haiku), `BEDROCK_ANSWER_MODEL` (Claude Sonnet), `GROQ_TAG_MODEL`, `GROQ_ANSWER_MODEL`, `GROQ_API_KEY`, `BEDROCK_CLIENT`, `LLM_BEDROCK_COOLDOWN`. The defaults in `engine/llm.py` are only for unset variables. Both Groq models are `openai/gpt-oss-120b`
 - `openai/gpt-oss` models reason before they answer, and reasoning tokens count against `max_tokens`. On Groq they run with `reasoning_effort` `low`, and `max_tokens` has a floor of 1024 for `tag` and 2048 for `answer`, so the visible answer is not cut off. Other Groq models get neither
 - `json_schema` on Groq turns on JSON mode (`response_format` `json_object`) and appends a one-line instruction to return only JSON with the schema's keys. Bedrock gets the same one-line instruction, not a native structured-output request, so callers still parse and validate
