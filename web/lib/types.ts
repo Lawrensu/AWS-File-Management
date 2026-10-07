@@ -12,7 +12,7 @@ export type DocType =
   | "form"
   | "letter"
   | "other";
-export type Confidence = "high" | "low";
+export type Confidence = "high" | "medium" | "low";
 
 export interface Document {
   doc_id: string;

@@ -68,8 +68,9 @@ Non-streaming response
   "not_found": false
 }
 ```
-`confidence` is `high` if the top RRF score is above a threshold C3 picks, `low` if the model
-answered "not found". `not_found: true` means the answer is the standard not-found sentence.
+`confidence` is one of `high`, `medium`, `low`. `high` when the top RRF score is at or above a
+threshold C3 tunes on real data, `medium` below it, `low` when the model answered "not found".
+BM25-only scores are about half of hybrid scores, so the threshold must account for that. `not_found: true` means the answer is the standard not-found sentence.
 `[n]` markers in `answer` map to `citations[].n`.
 
 Streaming (`stream: true`): `text/event-stream`. Events:

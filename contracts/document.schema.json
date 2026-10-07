@@ -22,6 +22,7 @@
       "description": "Titles or reference numbers this document says it replaces, as written in the document. Resolved to doc_ids by B3."
     },
     "superseded_by": { "type": ["string", "null"], "description": "doc_id of the newer document, set by B3." },
+    "summary": { "type": ["string", "null"], "description": "One sentence from the tagger, in the document's language. Shown on UI cards, not indexed." },
     "keywords": { "type": "array", "items": { "type": "string" }, "description": "YAKE top 10." },
     "page_count": { "type": "integer", "minimum": 1 },
     "has_scanned_pages": { "type": "boolean", "default": false },
