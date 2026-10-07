@@ -18,6 +18,7 @@ Rules for every coding agent and every human on this repo. `CLAUDE.md` and
 - `contracts/` JSON schemas and the API contract. Source of truth for every shared shape.
 - `engine/ingest/` A. File to chunks with text, page, bbox, keywords, tags, embedding.
 - `engine/index/` B. `IndexStore` interface, `SqliteStore`, hybrid search, supersession.
+- `engine/llm.py` The one LLM entry point: `complete`, `stream`, `preferred_provider`. Bedrock first, then Groq.
 - `engine/testing.py` `FakeStore` and fixtures. Every test uses these, never `SqliteStore`.
 - `api/` C. FastAPI with `/search`, `/ask`, `/documents`.
 - `web/` D. Next.js client.
@@ -33,6 +34,7 @@ Rules for every coding agent and every human on this repo. `CLAUDE.md` and
 - Every chunk has a page number. No exceptions.
 - No real government documents in the repo.
 - No secrets in code. `.env` is gitignored, `.env.example` is committed.
+- Every LLM call goes through `engine/llm.py` (`complete` or `stream`). Never import `anthropic` or `groq`, or call a Claude or Llama endpoint, anywhere else.
 - Bedrock calls are cached or batched. Never call a model inside a loop over chunks.
 - Tests sit next to code. `chunker.py` has `test_chunker.py`. Write the test first.
 
@@ -42,11 +44,13 @@ Rules for every coding agent and every human on this repo. `CLAUDE.md` and
 - Index: `SqliteStore` on SQLite, rank_bm25 and numpy, behind `IndexStore`.
 - AWS: Textract as a stretch, and Bedrock.
 - Embeddings: Cohere Embed Multilingual v3 (`cohere.embed-multilingual-v3`, 1024 dims) on Bedrock in `ap-southeast-1`, via boto3. Titan v2 is not offered there. Documents embed as `search_document`; API code embeds questions with `input_type="query"`.
-- Claude: the `anthropic` SDK's `AnthropicBedrockMantle(aws_region=...)`. Model IDs are in `.env` and are pending a retest after AWS account verification.
+- Claude: only through `engine/llm.py`. It uses the `anthropic` SDK's `AnthropicBedrockMantle(aws_region=...)` by default, or boto3 Converse when `BEDROCK_CLIENT=converse`. Model IDs are in `.env`.
+- Bedrock Claude is blocked until AWS approves the Anthropic use case form, so Groq serves today. When Bedrock starts working it takes over with no code change.
 - Region is in `.env`. The default is `ap-southeast-1`. Confirm model access in the console.
-- Fallback: Groq free tier for tagging and answers when Bedrock fails, via `GROQ_API_KEY`. No embedding fallback; search drops to BM25 only.
+- Fallback: Groq free tier for tagging and answers when Bedrock fails, via `GROQ_API_KEY`, inside `engine/llm.py`. No embedding fallback; search drops to BM25 only.
 - No paid services. Bedrock runs on a $100 credit with a $1 budget alert.
-- AWS credentials exist only on Lawrence's machine. Elsewhere, set `EMBED_FAKE=1` and mock Bedrock in tests.
+- Only Lawrence's machine has model access, AWS and Groq. Everyone else sets `EMBED_FAKE=1`, leaves `GROQ_API_KEY` empty, and stubs `engine.llm` and `embed_texts` in tests.
+- On a machine without keys, `engine.llm` raises `LLMUnavailable`. That is expected. Do not debug provider, credential or network errors there, and test the `LLMUnavailable` path with a stub.
 - Read every model ID and the region from `.env`. Never hardcode them.
 - A Bedrock failure must never crash ingest or the API. Catch it and fall back.
 - `EMBED_FAKE=1` runs everything without AWS credentials, on BM25 only.

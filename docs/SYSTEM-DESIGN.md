@@ -32,7 +32,7 @@ Rujuk consists of:
 	- Amazon Bedrock, Cohere Embed Multilingual v3 in `ap-southeast-1`: embeddings, cross-language matching
 	- Amazon Bedrock, Claude Haiku: tags and supersession, cheapest capable model
 	- Amazon Bedrock, Claude Sonnet: cited answers
-	- Groq free tier: fallback for tags and answers, `llama-3.1-8b-instant` and `llama-3.3-70b-versatile`
+	- Groq free tier: fallback for tags and answers, `openai/gpt-oss-120b` for both
 	- Amazon Textract: OCR for scanned pages, stretch goal
 - Frontend
 	- Next.js 16.4.0 app router: routes and server rendering
@@ -139,7 +139,7 @@ Cross sectional view of the application:
 - Teammates develop with `EMBED_FAKE=1` and mocks: nobody is blocked on credentials.
 - Groq free tier is the fallback for tags and answers: it needs no credit card.
 - No embedding fallback: without Bedrock, search runs on BM25 only.
-- One shared `engine/llm.py` will hold the Bedrock call and the Groq fallback, added after A4 and C3.
+- One shared `engine/llm.py` holds the Bedrock call and the Groq fallback. Every LLM call goes through it. Bedrock Claude is blocked until the Anthropic use case form is approved, so Groq serves today.
 - Department scoping is in the UI as Cognito-ready: real access control is roadmap.
 - Figures without text, such as flowcharts, are cut: they need a multimodal model.
 - The name Rujuk is Malay for to refer or to consult.

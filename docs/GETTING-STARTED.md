@@ -38,10 +38,11 @@ cp .env.example .env
 aws sts get-caller-identity
 ```
 
-- AWS credentials exist only on Lawrence's machine. The integrated demo runs there.
-- Everyone else sets `EMBED_FAKE=1` and tests Bedrock calls with mocks. The real run happens on Lawrence's machine.
+- Only Lawrence's machine has model access, AWS and Groq. The integrated demo and every real end to end test run there.
+- Everyone else sets `EMBED_FAKE=1`, leaves `GROQ_API_KEY` empty, and tests with `engine.llm` and `embed_texts` stubbed. `engine.llm` raises `LLMUnavailable` on those machines, which is expected. Do not try to fix provider, credential or network errors.
 - Write Bedrock calls to read model IDs and region from `.env`. Never hardcode them.
-- `GROQ_API_KEY` turns on the free Groq fallback for tagging and answers. Get a key at `console.groq.com`. No credit card is needed.
+- `GROQ_API_KEY` turns on the free Groq fallback for tagging and answers. Only Lawrence's machine has one. Leave it empty elsewhere.
+- `BEDROCK_CLIENT` (`mantle` by default, or `converse`) and `LLM_BEDROCK_COOLDOWN` (seconds, default 300) tune `engine/llm.py`.
 - Groq has no embeddings. If Bedrock is down, search runs on BM25 only.
 - `S3_BUCKET` is optional. Leave it empty to keep uploads in `data/uploads/`.
 - `INDEX_PATH` defaults to `data/index.sqlite`.

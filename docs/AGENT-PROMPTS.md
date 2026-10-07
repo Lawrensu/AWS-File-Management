@@ -10,7 +10,9 @@ Common preamble, included at the top of every prompt below:
 Read AGENTS.md, then contracts/README.md. Work only inside the package named below. Write
 the test first, make it pass, run the test command, and paste its output. Do not commit.
 Tests that need a store use engine.testing.FakeStore, make_document, make_chunk; never
-SqliteStore. Reply with the list of files changed and anything you had to assume.
+SqliteStore. You have no model keys: set EMBED_FAKE=1, leave GROQ_API_KEY empty, stub
+engine.llm and embed_texts in tests, and never debug provider, credential or network errors.
+Reply with the list of files changed and anything you had to assume.
 ```
 
 ---

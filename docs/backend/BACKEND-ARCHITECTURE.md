@@ -41,7 +41,8 @@ engine/index/             B. Done
 	supersession.py         resolve_supersession
 	README.md               B notes, ahead of PLAN and SYSTEM-DESIGN
 engine/testing.py         FakeStore, make_document, make_chunk for every test
-engine/llm.py             (planned) shared Bedrock call and Groq fallback
+engine/llm.py             exists, the one LLM entry point: Bedrock first, Groq fallback
+engine/test_llm.py        exists, stub clients only
 api/                      C. FastAPI
 	main.py                 exists: app, CORS, lifespan placeholder, /health
 	prompts/answer.md       exists, answer prompt and post-processing rules
@@ -188,21 +189,32 @@ Code in `engine/index/`. All access goes through `IndexStore`.
 
 ## LLM Providers
 
-- Bedrock is primary, model IDs and region come from `.env`, never hardcoded:
-	- `BEDROCK_EMBED_MODEL` (Cohere Embed Multilingual v3, `cohere.embed-multilingual-v3`)
-	- `BEDROCK_TAG_MODEL` (Claude Haiku)
-	- `BEDROCK_ANSWER_MODEL` (Claude Sonnet) via `AnthropicBedrockMantle(aws_region=...)`
-- Groq free tier is the fallback for tagging and answers, `GROQ_API_KEY`, `GROQ_TAG_MODEL`, `GROQ_ANSWER_MODEL`, empty key disables it
-- No embedding fallback, search drops to BM25 only (`query_vec=None`)
+- `engine/llm.py` is the one LLM entry point. Every model call goes through it, and nothing else imports `anthropic` or `groq`
+- Interface:
+	- `complete(system, user, *, role, max_tokens, json_schema=None) -> LLMResult`, where `role` is `"tag"` or `"answer"` and `LLMResult` has `text`, `provider`, `model`, `input_tokens`, `output_tokens`
+	- `stream(system, user, *, role, max_tokens) -> StreamResult`, iterate it for text deltas, read `.provider` and `.model` for who is answering. It returns after the first token has arrived
+	- `preferred_provider(role) -> "bedrock" | "groq"`, what the next call will try first. `/ask` uses it to send 8 chunks to Bedrock or 5 to Groq
+	- `LLMUnavailable` is raised when no provider is available or every one tried failed. Callers decide what to do: the tagger returns its fallback tags
+- Provider order is Bedrock first, then Groq:
+	- Bedrock is skipped when `EMBED_FAKE=1`, which means there is no AWS on this machine
+	- Groq is skipped when `GROQ_API_KEY` is empty
+	- Fallback to the next provider happens only before the first token. If Bedrock fails mid-stream, the exception is raised
+- Circuit breaker: after a Bedrock failure for a role, Bedrock is skipped for that role for `LLM_BEDROCK_COOLDOWN` seconds (default 300), so every call does not pay the failure latency. The cooldown is ignored when Groq is not available, because there is nothing else to try
+- `BEDROCK_CLIENT` picks the Bedrock client:
+	- `mantle` (default): the `anthropic` SDK's `AnthropicBedrockMantle(aws_region=AWS_REGION)`
+	- `converse`: boto3 `bedrock-runtime` `converse` and `converse_stream`
+- Config comes from `.env`, never hardcoded: `AWS_REGION`, `BEDROCK_TAG_MODEL` (Claude Haiku), `BEDROCK_ANSWER_MODEL` (Claude Sonnet), `GROQ_TAG_MODEL`, `GROQ_ANSWER_MODEL`, `GROQ_API_KEY`, `BEDROCK_CLIENT`, `LLM_BEDROCK_COOLDOWN`. The defaults in `engine/llm.py` are only for unset variables. Both Groq models are `openai/gpt-oss-120b`
+- `openai/gpt-oss` models reason before they answer, and reasoning tokens count against `max_tokens`. On Groq they run with `reasoning_effort` `low`, and `max_tokens` has a floor of 1024 for `tag` and 2048 for `answer`, so the visible answer is not cut off. Other Groq models get neither
+- `json_schema` on Groq turns on JSON mode (`response_format` `json_object`) and appends a one-line instruction to return only JSON with the schema's keys. Bedrock gets the same one-line instruction, not a native structured-output request, so callers still parse and validate
+- Current state: Claude on Bedrock is blocked for the AWS account until the Anthropic use case form is approved. Mantle returns 404 "model does not exist" and Converse returns "use case details have not been submitted". Groq serves every tag and answer today. Once the form is approved, Bedrock takes over with no code change
+- No embedding fallback, search drops to BM25 only (`query_vec=None`). Embeddings are not an LLM call and stay in `engine/ingest/embed.py`
 - On Groq, `/ask` uses the top 5 chunks instead of 8, to fit the free tier's token limit
 - A Bedrock failure must never crash ingest or the API
 - Embeddings use Cohere request fields `texts`, `input_type` and `truncate: END`
 - Documents embed with `input_type="document"` (`search_document`), the default. API code embeds questions with `input_type="query"` (`search_query`). The two are cached separately
-- Cohere v3 truncates input past 512 tokens (`truncate: END` drops the tail). Seed-corpus pages fit under that: the largest chunk is 381 words. The token count is not measured, so confirm it on the first real run. Real documents with chunks near the 800 word cap would be truncated
+- Cohere on Bedrock rejects a text longer than 2048 characters. `embed_texts` trims each text to its first 2048 characters before sending, so the embedding covers the first 2048 characters of a chunk and BM25 covers all of it. The stored chunk text is unchanged. Titan inputs are not trimmed. Seed-corpus chunks run up to about 2450 characters, so some are trimmed
 - A model ID starting with `amazon.titan` switches `embed_texts` back to the Titan v2 request, one text per call, so going back is a config change
-- AWS credentials exist only on Lawrence's machine, the vertical slice and the demo run there
-- Claude model IDs are pending a retest after AWS account verification
-- `engine/llm.py` (planned) will hold the shared Bedrock call and Groq fallback, added after A4 and C3 are done
+- Only Lawrence's machine has model access, AWS and Groq. The vertical slice, the demo and real end to end tests run there. Elsewhere `engine.llm` raises `LLMUnavailable`, which is expected, and tests stub `engine.llm` and `embed_texts`
 
 ## Prompts
 
@@ -291,7 +303,7 @@ Requirement names follow [System Design](../SYSTEM-DESIGN.md). A planned item is
 - `contracts/api.md` says `confidence` is `high` or `low`, `api/prompts/answer.md` also uses `medium`
 - The `/ask` threshold of 0.03 sits near the ceiling of 0.0328, and BM25 only tops out at 0.0164 so no answer is ever high there (from the B notes)
 - The tagger prompt returns a `summary` stored on the document for the UI card, but `document.schema.json` has no `summary` field and sets `additionalProperties: false`
-- Tagger fallback differs: System Design says Bedrock, then Groq, then default tags, `tagger.md` says retry once, then defaults, with no Groq step
+- Tagger: a Groq `json_validate_failed` (HTTP 400) is retried once inside the tagger. Fallback: it now calls `engine.llm.complete`, which tries Bedrock then Groq, and falls back to default tags on `LLMUnavailable`. `tagger.md` still describes only the retry and the defaults
 - `tag_document` is `(filename, text) -> dict` in PLAN, `(title, text) -> DocMeta` in `engine/ingest/__init__.py`, and `tagger.md` passes filename and text
 - PLAN C1 says fall back to `FakeStore` if B1 is missing, the B notes say that fallback is no longer needed. `api/main.py` still sets `app.state.store = None` (TODO(C1)), so `/health` reports 0 and 0
 - `api/main.py` docstring lists `models.py`, `search.py`, `ask.py`, `documents.py`, `upload.py`, none exist

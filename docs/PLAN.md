@@ -10,7 +10,9 @@
 [A] means hand it to an agent with the matching block in `docs/AGENT-PROMPTS.md` and review
 the diff. [H] means do it yourself. Tests use `engine/testing.py` (`FakeStore`,
 `make_document`, `make_chunk`) so nobody waits for the real store. Set `EMBED_FAKE=1` to run
-anything without AWS credentials.
+anything without AWS credentials. Only Lawrence's machine has model access (AWS and Groq): everyone
+else leaves `GROQ_API_KEY` empty, stubs `engine.llm` and `embed_texts` in tests, and does not debug
+provider errors.
 
 ## Who blocks whom
 
@@ -116,10 +118,14 @@ chat. Everything else runs in parallel against `FakeStore` or mock JSON.
   `contracts/`. Lifespan opens `SqliteStore(INDEX_PATH)` and falls back to `FakeStore()`
   with a warning if B1 is not there yet.
   Done: `/health` returns 200.
-- C2 [A] `POST /search`. Embed the query; on failure pass `query_vec=None`. Call B2.
+- C2 [A] `POST /search`. Embed the query with `embed_texts([q], input_type="query")`; on failure
+  pass `query_vec=None`. Call B2.
   Done: curl returns results.
-- C3 [H] `POST /ask`. Top 8 chunks, Claude Sonnet on Bedrock via `AnthropicBedrockMantle`,
-  SSE stream, `[n]` markers mapped to citations. Prompt and post-processing in
+- C3 [H] `POST /ask`. Call `engine.llm.stream(role="answer")`, never a provider SDK. Ask
+  `engine.llm.preferred_provider("answer")` first: 8 chunks for Bedrock, 5 for Groq. Report the
+  provider and model actually used from the `StreamResult`. `LLMUnavailable` returns 503 with
+  `{"error": ...}`. SSE
+  stream, `[n]` markers mapped to citations. Prompt and post-processing in
   `api/prompts/answer.md`.
   Done: 3 scripted questions right, the trick question is refused, a superseded doc is
   named as superseded.
