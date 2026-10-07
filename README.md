@@ -21,8 +21,13 @@ Rujuk is document search and Q&A for government agencies, built for an AWS hacka
 
 ## Screenshots
 
-- [`docs/screenshots/search.png`](docs/screenshots/search.png):search results with tags and the Superseded badge
-- [`docs/screenshots/ask.png`]((docs/screenshots/ask.png)): a cited answer in Malay from an English document
+Search results with tags and the Superseded badge:
+
+![Search results with tags and the Superseded badge](docs/screenshots/search.png)
+
+A cited answer in Malay from an English document:
+
+![A cited answer in Malay from an English document](docs/screenshots/ask.png)
 
 ## Documentation
 
