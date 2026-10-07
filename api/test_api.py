@@ -77,6 +77,15 @@ def test_validation_error_shape(client):
     r = client.post("/search", json={"query": "elaun", "top_k": 500})
     assert r.status_code == 422
     assert set(r.json()) == {"error"}
+    assert r.json()["error"].startswith("top_k:")
+
+
+def test_malformed_json_is_422_with_error_key(client):
+    r = client.post("/search", content="{bad json", headers={"Content-Type": "application/json"})
+    assert r.status_code == 422
+    assert r.json() == {"error": "body: JSON decode error"}
+    r = client.post("/search", json={"q": "x"})
+    assert r.status_code == 422 and r.json() == {"error": "query: Field required"}
 
 
 # --- C2 -----------------------------------------------------------------------------------
@@ -129,6 +138,21 @@ def test_ask_maps_citations(client, monkeypatch):
     assert body["citations"][1]["status"] == "superseded"
     assert "SUPERSEDED by Pekeliling Bil. 3/2024" in seen[0]
     assert set(body) == {"answer", "language", "confidence", "citations", "not_found"}
+
+
+def test_ask_prompt_names_the_answer_language(client, monkeypatch):
+    seen: list[str] = []
+    monkeypatch.setattr(ask_module, "preferred_provider", lambda role: "groq")
+    monkeypatch.setattr(ask_module, "stream", fake_stream(["RM0.70 [1]."], seen=seen))
+    client.post("/ask", json={"question": "Do annual leave applications need approval?"})
+    client.post("/ask", json={"question": "Berapakah kadar elaun perjalanan kontraktor?"})
+    assert seen[0].rstrip().endswith("Answer in English.")
+    assert seen[1].rstrip().endswith("Answer in Bahasa Malaysia.")
+
+
+def test_system_prompt_asks_to_flag_superseded_values():
+    assert "SUPERSEDED" in ask_module.SYSTEM
+    assert "different value" in ask_module.SYSTEM
 
 
 def test_ask_chunk_budget_follows_provider(client, monkeypatch):

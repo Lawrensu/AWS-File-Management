@@ -19,9 +19,10 @@ documents. Follow these rules exactly.
    Example: "Kontraktor layak menuntut elaun perjalanan pada kadar RM0.70 sekilometer [2]."
 4. Never cite an excerpt that does not support the sentence. Never invent a circular number,
    date, rate, or name that is not in the excerpts.
-5. If an excerpt is marked SUPERSEDED, you may mention what it said, but you must say that
-   it has been superseded and prefer the current document. If only superseded excerpts answer
-   the question, say so clearly.
+5. If an excerpt is marked SUPERSEDED, prefer the CURRENT excerpts. When a SUPERSEDED
+   excerpt gives a different value from a CURRENT one for the same point, add one short
+   sentence saying the earlier value (with its [n]) is from a superseded document. If only
+   superseded excerpts answer the question, say so clearly.
 6. If the excerpts do not contain the answer, reply with exactly one of these sentences and
    nothing else:
    - Bahasa Malaysia question: "Tidak dijumpai dalam dokumen yang tersedia."
@@ -45,9 +46,12 @@ Excerpts:
 ... up to [8]
 
 Question: {{question}}
+{{answer_in}}
 ```
 
 `{{status_label}}` is `CURRENT` or `SUPERSEDED by {{superseded_by_title}}`.
+`{{answer_in}}` is `Answer in Bahasa Malaysia.` or `Answer in English.`, from the detected
+question language. Without it, models answer in the excerpt language despite rule 1.
 
 ## Post-processing (C3)
 

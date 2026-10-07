@@ -38,6 +38,8 @@ NOT_FOUND = {
     "ms": "Tidak dijumpai dalam dokumen yang tersedia.",
     "en": "Not found in the available documents.",
 }
+# Sent with every question: models follow the excerpt language over rule 1 of the system prompt.
+ANSWER_IN = {"ms": "Answer in Bahasa Malaysia.", "en": "Answer in English."}
 _MARKER = re.compile(r"\[(\d+)\]")
 # Short Malay questions often confuse langdetect, so common Malay words decide first.
 _MALAY_WORDS = {
@@ -74,7 +76,10 @@ def ask(req: AskRequest, store: Store):
 
     try:
         answer_stream = stream(
-            SYSTEM, build_user_prompt(req.question, excerpts), role="answer", max_tokens=MAX_TOKENS
+            SYSTEM,
+            build_user_prompt(req.question, excerpts, language),
+            role="answer",
+            max_tokens=MAX_TOKENS,
         )
     except LLMUnavailable as exc:
         log.warning("answer model unavailable: %s", exc)
@@ -104,12 +109,14 @@ def question_language(question: str) -> str:
     return "ms" if lang in ("ms", "id") else "en"
 
 
-def build_user_prompt(question: str, excerpts: list[dict]) -> str:
+def build_user_prompt(question: str, excerpts: list[dict], language: str) -> str:
     blocks = [
         f"[{i}] {e['title']} | page {e['page']} | {e['status_label']}\n{e['text']}"
         for i, e in enumerate(excerpts, 1)
     ]
-    return "Excerpts:\n\n" + "\n\n".join(blocks) + f"\n\nQuestion: {question}"
+    return (
+        "Excerpts:\n\n" + "\n\n".join(blocks) + f"\n\nQuestion: {question}\n{ANSWER_IN[language]}"
+    )
 
 
 def build_response(

@@ -67,8 +67,10 @@ async def http_error(_: Request, exc: StarletteHTTPException) -> JSONResponse:
 @app.exception_handler(RequestValidationError)
 async def validation_error(_: Request, exc: RequestValidationError) -> JSONResponse:
     first = exc.errors()[0] if exc.errors() else {}
-    where = ".".join(str(p) for p in first.get("loc", ()) if p != "body")
-    message = f"{where}: {first.get('msg', 'invalid request')}" if where else "invalid request"
+    loc = [p for p in first.get("loc", ()) if p != "body"]
+    # A JSON syntax error has a character offset as its loc, not a field name.
+    where = ".".join(str(p) for p in loc) if any(isinstance(p, str) for p in loc) else "body"
+    message = f"{where}: {first.get('msg', 'invalid request')}"
     return JSONResponse(status_code=422, content={"error": message})
 
 
