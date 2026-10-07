@@ -97,20 +97,25 @@ Multipart form, field `file`. Ingests synchronously.
 All errors are `{"error": "<message>"}` with a 4xx/5xx status (see top of file).
 Workstream C uses:
 
-- `503 {"error": "index not ready"}` — returned by `POST /search` and `POST /ask`
-  when `app.state.store is None` (e.g. `SqliteStore` not implemented yet or `INDEX_PATH`
-  missing). `GET /health` never 503s; it returns `{"ok": true, "documents": 0, "chunks": 0}`
-  in that state.
-- `400 {"error": "<reason>"}` — `POST /documents/upload` when the file is not `.pdf`,
-  when the multipart field is not named `file`, or when the file is empty.
-- `404 {"error": "<reason>"}` — `GET /documents/{doc_id}` for unknown `doc_id`;
-  `GET /documents/{doc_id}/pages/{page}.png` for unknown `doc_id` or page out of range
-  (`page < 1` or `page > page_count`). A `highlight` chunk with zero `search_for` hits
-  does NOT 404 — it returns the plain PNG (highlight is best-effort).
-- Bedrock failures (`POST /ask` answer generation, query embedding) surface as
-  `503 {"error": "answer model unavailable: <model_id> in <region>"}` or
-  `503 {"error": "embedding unavailable: <detail>"}`. They never take down the app;
-  `POST /search` without embedding and `GET /documents` keep working when possible.
+- `503 {"error": "index not ready"}`: any route that needs the store, when
+  `app.state.store is None`. The lifespan falls back to an empty `FakeStore` if
+  `SqliteStore(INDEX_PATH)` fails, so in practice this only shows up in tests.
+  `GET /health` never 503s; it returns `{"ok": true, "documents": 0, "chunks": 0}`.
+- `400 {"error": "<reason>"}`: `POST /documents/upload` when the multipart field `file` is
+  missing, the name does not end in `.pdf`, the bytes do not start with `%PDF`, the file is
+  empty, or it is over 50 MB.
+- `404 {"error": "<reason>"}`: `GET /documents/{doc_id}` for an unknown `doc_id`;
+  `GET /documents/{doc_id}/pages/{page}.png` for an unknown `doc_id`, a page out of range
+  (`page < 1` or `page > page_count`), or a source PDF that is not on disk. A `highlight`
+  with zero `search_for` hits does not 404; it returns the plain PNG.
+- `422 {"error": "<field>: <reason>"}`: request body fails validation (for example
+  `top_k` over 50 or an empty `query`).
+- `503 {"error": "answer model unavailable: <detail>"}`: `POST /ask` when `engine.llm`
+  raises `LLMUnavailable` (no provider available, or every provider failed before the
+  first token).
+- Query embedding failure never returns an error. `/search` and `/ask` drop to BM25 only.
+- A provider failure after the first token ends the answer early; the stream still ends
+  with a `done` event.
 
 ### Filtering (search and ask)
 `filters` fields are all optional. Defaults: `department: null, doc_type: null,
@@ -120,21 +125,27 @@ include_superseded: false`.
   against `Document.department` (one of `taxonomy.json: department`).
 - `doc_type: null` means no type filter. Otherwise exact match against
   `taxonomy.json: doc_type`.
-- `include_superseded: false` (default) does NOT remove superseded docs — matching
-  chunks from docs with `status == "superseded"` get `score * 0.3` so the UI can still
-  show the red "Superseded" badge. `true` restores full score. See B2 RRF spec.
-- `top_k`: default 10, max 50. `POST /ask` always uses top 8 chunks for the prompt
-  regardless of `top_k` (retrieval `k=8` internally).
+- `include_superseded: false` (default) does not remove superseded docs. Their chunks are
+  ranked as if they sat 5 places lower in every list (`SUPERSEDED_RANK_OFFSET` in B2), so
+  they stay visible below the current document and the UI can show the red badge.
+  `true` turns the demotion off.
+- `top_k`: default 10, max 50. `POST /ask` ignores it and uses the top 8 chunks when
+  `engine.llm.preferred_provider("answer")` is `bedrock`, or the top 5 when it is `groq`.
+- `POST /ask` with no matching chunks returns the not-found answer without calling a model.
 
 ### Streaming (POST /ask with `"stream": true`)
 - Request: same as non-streaming plus `"stream": true`.
 - Response headers: `Content-Type: text/event-stream`, `Cache-Control: no-cache`.
-- Event 1..N: `data: {"type": "token", "text": "..."}` — raw model token deltas, in order.
+- Event 1..N: `data: {"type": "token", "text": "..."}`, raw model text deltas in order.
 - Final event: `data: {"type": "done", "answer": {...full non-streaming AskResponse...}}`
   where `AskResponse` is `{answer, language, confidence, citations[], not_found}` per
   the `POST /ask` section above. Clients must parse only the `done` event for citations.
-- `[n]` markers in `answer` map 1:1 to `citations[].n` in order of first appearance.
-  `n` is 1-indexed into the top-8 excerpt list for that request.
+- `[n]` markers in `answer` map to `citations[].n` in order of first appearance. `n` is
+  1-indexed into the excerpt list for that request (8 or 5 long). Out-of-range markers are
+  dropped from `citations` but left in the text.
+- `LLMUnavailable` is raised before streaming starts, so it is a plain JSON 503, not SSE.
+- Headers `X-Rujuk-Provider` and `X-Rujuk-Model` (exposed via CORS) name the provider and
+  model that actually answered. They are headers, not body fields.
 
 ### Viewer (GET page PNG)
 - Renders with PyMuPDF at ~110 dpi. Response: `image/png` with
@@ -142,4 +153,5 @@ include_superseded: false`.
 - `?highlight=<chunk_id>`: server takes the first 120 chars of chunk text, calls
   `page.search_for(text)`; on zero hits retries with first 60 chars. Each hit rect is
   drawn yellow (`fill=(1, 0.85, 0), fill_opacity=0.35`) before rendering. Zero hits
-  after retry returns the unhighlighted page (still 200).
+  after retry returns the unhighlighted page (still 200). A chunk from another document
+  or page is ignored.
