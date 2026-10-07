@@ -78,9 +78,24 @@ CREATE INDEX IF NOT EXISTS chunks_by_doc ON chunks (doc_id);
 """
 
 
+# Function words in both languages. Without them an English question gets keyword hits on
+# "what is the" in English chunks, and with vectors on those hits outrank a Malay answer
+# that only the vectors can find. English "had" is left out: in Malay it means "limit".
+_STOPWORDS = frozenset(
+    """
+    a an the is are was were be been being do does did of to in on at by for from with and
+    or not this that these those it its what which who whom how many much when where why
+    must should can will shall would could
+    dan yang di ke dari daripada untuk bagi dengan ini itu adalah ialah oleh pada dalam akan
+    telah boleh mesti hendaklah berapa berapakah apakah siapakah bilakah manakah atau juga
+    tidak ada sebagai kepada semua setiap
+    """.split()  # noqa: SIM905 - a word list reads better than 80 quoted strings
+)
+
+
 def tokenize(text: str) -> list[str]:
-    """Lowercased unicode word tokens, used for both indexing and queries."""
-    return _TOKEN.findall(text.lower())
+    """Lowercased unicode word tokens minus stopwords, used for indexing and queries."""
+    return [t for t in _TOKEN.findall(text.lower()) if t not in _STOPWORDS]
 
 
 class _LuceneBM25(BM25Okapi):
