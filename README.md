@@ -2,7 +2,64 @@
 
 Document search and Q&A for government agencies. AWS hackathon, 4-hour build.
 
-## Start here
+## Team
+
+- Lawrence: Prepped the repo, UI, seed corpus, demo
+- Malissa: ingest pipeline
+- Noah: index and retrieval
+- Cyndia: API and answer generation
+
+## Screenshots
+
+<!-- Replace before submission. Keep 2 to 3. -->
+
+- `docs/screenshots/search.png`: search results with tags and the Superseded badge
+- `docs/screenshots/ask.png`: a cited answer in Malay from an English document
+- `docs/screenshots/viewer.png`: the page viewer with the cited passage highlighted
+
+## Requirements
+
+Install these if missing.
+
+- Git
+- Python 3.11 or newer: https://www.python.org/downloads/
+- uv: `pip install uv` or https://docs.astral.sh/uv/getting-started/installation/
+- Node.js 20 or newer: https://nodejs.org/
+- pnpm: `npm install -g pnpm`
+- AWS CLI: https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html
+- An AWS account with Bedrock model access enabled in your region for
+  `amazon.titan-embed-text-v2:0` and the Claude models listed in `.env.example`.
+  Textract is only needed for the scanned-document stretch.
+
+Python dependencies are in `pyproject.toml` and installed by `uv sync`. Web dependencies are
+in `web/package.json` and installed by `pnpm install`.
+
+## Run it
+
+```bash
+uv sync --extra dev
+cp .env.example .env            # fill in AWS_PROFILE and AWS_REGION
+uv run python -m engine.ingest samples/
+uv run uvicorn api.main:app --reload
+```
+
+In a second terminal:
+
+```bash
+cd web && pnpm install && pnpm dev
+```
+
+Open http://localhost:3000. Without AWS credentials, set `EMBED_FAKE=1` before the ingest
+and API commands; search still works on keywords, `/ask` does not.
+
+## Submission checklist
+
+- Repository is public
+- README lists all group members
+- README has 2 to 3 screenshots
+- `docs/DEMO.md` has the three demo questions and the backup recording link
+
+## Start here (team)
 
 1. Get the code and your branch.
 
