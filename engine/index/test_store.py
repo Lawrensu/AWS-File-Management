@@ -101,6 +101,22 @@ def test_bm25_drops_chunks_that_do_not_match(store):
     assert [cid for cid, _ in store.bm25_search("audit", 10)] == [f"{DOC}:4:2"]
 
 
+def test_stopwords_do_not_match(store):
+    # An English question must not hit English chunks on "what is the" alone; with vectors
+    # on, those hits would outrank a Malay answer that only the vectors can find.
+    store.upsert_chunks(
+        [
+            make_chunk(DOC, n=0, text="The leave form is in the HR portal.", seed=1),
+            make_chunk(DOC, n=1, text="Kadar ini adalah untuk semua pegawai.", seed=2),
+            make_chunk(DOC, n=2, text="Had pembelian terus ialah RM50,000.", seed=3),
+        ]
+    )
+    assert store.bm25_search("What is the rate for this?", 10) == []
+    assert store.bm25_search("berapakah untuk semua yang ini", 10) == []
+    # Malay "had" (limit) is a content word even though English "had" is not.
+    assert [cid for cid, _ in store.bm25_search("had pembelian", 10)] == [f"{DOC}:1:2"]
+
+
 def test_works_from_a_second_thread(store):
     # FastAPI opens the store in the lifespan and serves requests from a thread pool.
     def work() -> tuple[int, int]:
