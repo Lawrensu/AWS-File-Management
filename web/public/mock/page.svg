@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="595" height="842" viewBox="0 0 595 842">
+  <rect width="595" height="842" fill="#fafafa"/>
+  <rect x="0.5" y="0.5" width="594" height="841" fill="none" stroke="#d4d4d8"/>
+  <g stroke="#c4c4cc" stroke-width="6" stroke-linecap="round">
+    <line x1="60" y1="80" x2="360" y2="80"/>
+    <line x1="60" y1="120" x2="535" y2="120"/>
+    <line x1="60" y1="144" x2="520" y2="144"/>
+    <line x1="60" y1="168" x2="535" y2="168"/>
+    <line x1="60" y1="192" x2="440" y2="192"/>
+    <line x1="60" y1="620" x2="535" y2="620"/>
+    <line x1="60" y1="644" x2="520" y2="644"/>
+    <line x1="60" y1="668" x2="535" y2="668"/>
+    <line x1="60" y1="692" x2="400" y2="692"/>
+  </g>
+  <rect x="50" y="381" width="495" height="80" fill="#facc15" fill-opacity="0.4" stroke="#eab308"/>
+  <text x="297" y="427" text-anchor="middle" font-family="sans-serif" font-size="18" fill="#713f12">highlight</text>
+</svg>

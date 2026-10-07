@@ -1,15 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { health, search } from "@/lib/api";
+import { USE_MOCK, health, search } from "@/lib/api";
 import type { SearchResult } from "@/lib/types";
 import Header from "@/components/Header";
 import SearchBar from "@/components/SearchBar";
 import ResultCard from "@/components/ResultCard";
 import { useDepartment } from "@/components/DepartmentSelect";
-import mockSearch from "@/mock/search.json";
-
-const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK === "1";
 
 type State =
   | { kind: "idle" }
@@ -41,13 +38,8 @@ export default function Home() {
     let cancelled = false;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setState({ kind: "loading" });
-    const run: Promise<SearchResult[]> = USE_MOCK
-      ? Promise.resolve(mockSearch.results as SearchResult[])
-      : search({
-          query,
-          filters: { department },
-        }).then((r) => r.results);
-    run
+    search({ query, filters: { department } })
+      .then((r) => r.results)
       .then((results) => {
         if (!cancelled) setState({ kind: "done", results });
       })

@@ -3,10 +3,10 @@
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
-import { document as fetchDocument, pageImageUrl } from "@/lib/api";
+import { ApiError, document as fetchDocument, pageImageUrl } from "@/lib/api";
 import type { DocumentDetail } from "@/lib/types";
 
-type Loaded = { id: string; doc: DocumentDetail | null };
+type Loaded = { id: string; doc: DocumentDetail | null; error?: string };
 
 function Viewer() {
   const params = useParams<{ id: string }>();
@@ -25,7 +25,16 @@ function Viewer() {
     let cancelled = false;
     fetchDocument(id)
       .then((doc) => !cancelled && setLoaded({ id, doc }))
-      .catch(() => !cancelled && setLoaded({ id, doc: null }));
+      .catch((e: unknown) => {
+        if (cancelled) return;
+        const error =
+          e instanceof ApiError && e.status === 404
+            ? "Document not found"
+            : e instanceof Error
+              ? e.message
+              : "Unknown error";
+        setLoaded({ id, doc: null, error });
+      });
     return () => {
       cancelled = true;
     };
@@ -46,7 +55,7 @@ function Viewer() {
     return shell(<p className="text-gray-600">Loading...</p>);
   }
   if (!loaded.doc) {
-    return shell(<p className="text-gray-800">Document not found</p>);
+    return shell(<p className="text-gray-800">{loaded.error ?? "Document not found"}</p>);
   }
 
   const { doc } = loaded;

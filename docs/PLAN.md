@@ -47,7 +47,7 @@ chat. Everything else runs in parallel against `FakeStore` or mock JSON.
 - Cyndia: C3 [H] once A3 and B2 are pushed.
 - Lawrence: D3 [H] once C3 is pushed.
 
-1:30 Vertical slice on one machine. One PDF in, cited answer out, shown in the UI.
+1:30 Vertical slice on Lawrence's machine, the only one with AWS credentials. One PDF in, cited answer out, shown in the UI.
 
 1:30 to 3:00
 - Noah: tune ranking on real data, run eval at 2:30, fix the worst miss.
