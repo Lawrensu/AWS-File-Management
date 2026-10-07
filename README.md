@@ -2,6 +2,16 @@
 
 Rujuk is document search and Q&A for government agencies, built for an AWS hackathon in 4 hours. It ingests PDFs, including scans, and indexes them with hybrid keyword and vector search. Staff ask in Malay or English and get cited answers with the source page highlighted.
 
+## What it does
+
+- **Search by meaning.** Find the right circular, SOP or minutes in plain language, not exact keywords.
+- **Cited answers.** Ask a question and get a short answer where every claim links to its document and page.
+- **One click to the source.** The cited page opens with the passage highlighted, so staff can verify it.
+- **Bilingual.** Ask in Malay or English and get answers from documents in either language.
+- **Knows what is outdated.** When a newer circular replaces an older one, the old one is badged as superseded and ranked lower.
+- **Department view.** Each view shows that department's documents plus general ones.
+- **Built on AWS.** Amazon Bedrock runs the embeddings and Claude, with the Groq free tier as a fallback.
+
 ## Team
 
 - Lawrence Lian Anak Matius Ding (102789563): Prepped the repo, UI, seed corpus, demo
