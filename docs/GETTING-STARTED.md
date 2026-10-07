@@ -36,7 +36,9 @@ cp .env.example .env
 aws sts get-caller-identity
 ```
 
-- The AWS account is Lawrence's, paid from a $100 credit. Ask him for an IAM access key with Bedrock access only. Never share keys in the group chat.
+- AWS credentials exist only on Lawrence's machine. The integrated demo runs there.
+- Everyone else sets `EMBED_FAKE=1` and tests Bedrock calls with mocks. The real run happens on Lawrence's machine.
+- Write Bedrock calls to read model IDs and region from `.env`. Never hardcode them.
 - `GROQ_API_KEY` turns on the free Groq fallback for tagging and answers. Get a key at `console.groq.com`. No credit card is needed.
 - Groq has no embeddings. If Bedrock is down, search runs on BM25 only.
 - `S3_BUCKET` is optional. Leave it empty to keep uploads in `data/uploads/`.

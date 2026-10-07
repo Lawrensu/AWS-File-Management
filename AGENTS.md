@@ -46,6 +46,9 @@ Rules for every coding agent and every human on this repo. `CLAUDE.md` and
 - Region is in `.env`. The default is `ap-southeast-1`. Confirm model access in the console.
 - Fallback: Groq free tier for tagging and answers when Bedrock fails, via `GROQ_API_KEY`. No embedding fallback; search drops to BM25 only.
 - No paid services. Bedrock runs on a $100 credit with a $1 budget alert.
+- AWS credentials exist only on Lawrence's machine. Elsewhere, set `EMBED_FAKE=1` and mock Bedrock in tests.
+- Read every model ID and the region from `.env`. Never hardcode them.
+- A Bedrock failure must never crash ingest or the API. Catch it and fall back.
 - `EMBED_FAKE=1` runs everything without AWS credentials, on BM25 only.
 - Web: Next.js app router, React 19, Tailwind 4, `pnpm`.
 

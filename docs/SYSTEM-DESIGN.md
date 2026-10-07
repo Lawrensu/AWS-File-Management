@@ -26,7 +26,7 @@ This doc explains why Rujuk exists and how it works. Read it if you are a judge 
 ## Architecture
 
 - Three pieces: the document store, the knowledge engine, and a thin web client.
-- The document store is S3, standing in for the agency file share.
+- The document store stands in for the agency file share. Today it is a local folder. S3 is the production target.
 - Pitch line: point it at your existing file share, no migration.
 - The knowledge engine is the ingest pipeline plus the index.
 - The sections below cover ingest, index and search, query and answer, and the client.
@@ -40,6 +40,7 @@ This doc explains why Rujuk exists and how it works. Read it if you are a judge 
 - Extract keywords with YAKE.
 - Detect language with langdetect.
 - Tag with Claude Haiku from a closed taxonomy. The same call finds what the document supersedes.
+- If Bedrock fails, tagging falls back to Groq, then to default tags. Ingest never fails on a tag.
 - Embed with Titan v2.
 - Write to the index.
 - Resolve supersession once after the whole folder is ingested.
@@ -66,6 +67,7 @@ This doc explains why Rujuk exists and how it works. Read it if you are a judge 
 - Run hybrid search with the viewer's department filter.
 - `/search` returns result cards.
 - `/ask` sends the top 8 chunks to Claude Sonnet on Bedrock.
+- If Bedrock fails, `/ask` falls back to Groq with the top 5 chunks, to fit the free tier's token limit.
 - The prompt says: answer in the question's language, cite every claim, say not found otherwise.
 - The answer streams over SSE. `[n]` markers map to citations.
 - Page images are rendered server side with the cited passage highlighted.
@@ -106,7 +108,12 @@ This doc explains why Rujuk exists and how it works. Read it if you are a judge 
 - Supersession is detected at ingest. The old document is badged and ranked lower.
 - Tags and embeddings are cached by content hash. Re-ingest costs nothing.
 - Answers are capped at 8 chunks. Cost and latency stay bounded.
-- `EMBED_FAKE=1` runs everything without AWS. Teammates are never blocked on credentials.
+- No paid services. Bedrock runs on a $100 AWS credit with a $1 budget alert.
+- AWS credentials live on one machine only, Lawrence's. The integrated demo runs there.
+- Teammates develop with `EMBED_FAKE=1` and mocks, so they are never blocked on credentials.
+- Groq's free tier is the fallback for tagging and answers. It needs no credit card.
+- There is no embedding fallback. Without Bedrock, search runs on BM25 only.
+- One shared `engine/llm.py` will hold the Bedrock call and the Groq fallback. It is added after A4 and C3 are done.
 - Department scoping is in the UI as Cognito-ready. Real access control is roadmap.
 - Figures without text, such as flowcharts, are cut. They need a multimodal model.
 - The name Rujuk is Malay for to refer or to consult.
@@ -119,6 +126,11 @@ This doc explains why Rujuk exists and how it works. Read it if you are a judge 
 - Amazon Textract for scanned pages. Stretch goal.
 - Amazon S3 as the document store. Optional for uploads through `S3_BUCKET`.
 - Model IDs and region are set in `.env`. See `.env.example`.
+
+## Non-AWS services used
+
+- Groq free tier as the fallback model provider for tagging and answers.
+- Llama 3.1 8B Instant for tags and Llama 3.3 70B Versatile for answers. Set in `.env`.
 
 ## Roadmap
 
