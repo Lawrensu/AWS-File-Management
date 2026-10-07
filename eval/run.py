@@ -1,7 +1,7 @@
 """B4. Retrieval eval: recall@5 of hybrid_search over eval/questions.json.
 
     uv run python eval/run.py --bm25-only   # no AWS needed
-    uv run python eval/run.py               # embeds the questions with Titan (A3)
+    uv run python eval/run.py               # embeds the questions with Cohere (A3)
 
 questions.json is a list of {"question": str, "expected_filename": str}. Filenames are
 compared by stem, so a manifest's "01-x.md" matches the indexed "01-x.pdf".
@@ -85,7 +85,7 @@ def _embed(texts: list[str]) -> list[np.ndarray | None]:
         # TODO(A3): engine.ingest.embed.embed_texts
         print("engine.ingest.embed is not there yet, running BM25 only.", file=sys.stderr)
         return [None] * len(texts)
-    return list(embed_texts(texts))
+    return list(embed_texts(texts, input_type="query"))
 
 
 def _same_file(got: str, expected: str) -> bool:

@@ -1,4 +1,8 @@
-"""A3. Titan Text Embeddings v2 via boto3, cached in SQLite by sha256 of the text.
+"""A3. Embeddings on Bedrock via boto3, cached in SQLite by sha256 of model, input type and text.
+
+Default model is Cohere Embed Multilingual v3 (cohere.embed-multilingual-v3, 1024 dims, on
+demand in ap-southeast-1). A model ID starting with "amazon.titan" switches to the Titan v2
+request shape, so going back is a config change. Cohere truncates input past 512 tokens.
 
 EMBED_FAKE=1 returns deterministic hash-seeded vectors and never touches AWS or the cache.
 """
@@ -9,7 +13,6 @@ import hashlib
 import json
 import os
 import sqlite3
-from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
 from pathlib import Path
 from typing import Any
@@ -17,24 +20,29 @@ from typing import Any
 import numpy as np
 
 DIM = 1024
-DEFAULT_MODEL = "amazon.titan-embed-text-v2:0"
-MAX_WORKERS = 4
+DEFAULT_MODEL = "cohere.embed-multilingual-v3"
+BATCH_SIZE = 96  # Cohere accepts up to 96 texts per request
+_COHERE_INPUT_TYPES = {"document": "search_document", "query": "search_query"}
 
 
-def embed_texts(texts: list[str]) -> np.ndarray:
+def embed_texts(texts: list[str], input_type: str = "document") -> np.ndarray:
     """Return (len(texts), 1024) float32, rows L2-normalised.
 
-    Exception: whitespace-only texts get a zero row and no API call (Titan rejects empty
-    input). Only cache misses are sent to Bedrock, one invoke_model each (Titan v2 takes a
-    single input per request), in a small thread pool.
+    input_type is "document" (default, for ingest) or "query". API code embedding a user
+    question must pass input_type="query"; Cohere embeds the two differently.
+
+    Exception: whitespace-only texts get a zero row and no API call. Only cache misses are
+    sent to Bedrock: Cohere in batches of 96, Titan one invoke_model per text.
     """
+    if input_type not in _COHERE_INPUT_TYPES:
+        raise ValueError(f"input_type must be 'document' or 'query', got {input_type!r}")
     if not texts:
         return np.zeros((0, DIM), dtype=np.float32)
     if os.environ.get("EMBED_FAKE") == "1":
         return np.vstack([_fake_vector(t) for t in texts])
 
     model = os.environ.get("BEDROCK_EMBED_MODEL", DEFAULT_MODEL)
-    keys = [_key(t) for t in texts]
+    keys = [_key(model, input_type, t) for t in texts]
     out = np.zeros((len(texts), DIM), dtype=np.float32)
 
     with closing(_open_cache()) as con:
@@ -46,28 +54,37 @@ def embed_texts(texts: list[str]) -> np.ndarray:
         if misses:
             client = _bedrock_client()
             new: dict[str, np.ndarray] = {}
-            first_error: Exception | None = None
-            with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
-                futures = {k: pool.submit(_invoke, client, model, t) for k, t in misses.items()}
-                for k, fut in futures.items():
-                    try:
-                        new[k] = fut.result()
-                    except Exception as exc:  # noqa: BLE001 - re-raised below after caching
-                        first_error = first_error or exc
-            # Cache every success before re-raising, so a retry only pays for the failures.
-            with con:
-                con.executemany(
-                    "INSERT OR REPLACE INTO embeddings (key, model, vec) VALUES (?, ?, ?)",
-                    [(k, model, v.tobytes()) for k, v in new.items()],
-                )
-            if first_error is not None:
-                raise first_error
+            try:
+                _embed_misses(client, model, input_type, misses, new)
+            finally:
+                # Cache every success, even when a later batch raised, so a retry only pays
+                # for what failed.
+                with con:
+                    con.executemany(
+                        "INSERT OR REPLACE INTO embeddings (key, model, vec) VALUES (?, ?, ?)",
+                        [(k, model, v.tobytes()) for k, v in new.items()],
+                    )
             found.update(new)
 
     for i, k in enumerate(keys):
         if k in found:
             out[i] = found[k]
     return out
+
+
+def _embed_misses(
+    client: Any, model: str, input_type: str, misses: dict[str, str], new: dict[str, np.ndarray]
+) -> None:
+    items = list(misses.items())
+    if model.startswith("amazon.titan"):
+        for k, t in items:  # Titan v2 takes a single input per request
+            new[k] = _invoke_titan(client, model, t)
+        return
+    for i in range(0, len(items), BATCH_SIZE):
+        batch = items[i : i + BATCH_SIZE]
+        vecs = _invoke_cohere(client, model, input_type, [t for _, t in batch])
+        for (k, _), v in zip(batch, vecs):
+            new[k] = v
 
 
 def _bedrock_client() -> Any:
@@ -79,7 +96,22 @@ def _bedrock_client() -> Any:
     return boto3.client("bedrock-runtime", region_name=region, config=config)
 
 
-def _invoke(client: Any, model: str, text: str) -> np.ndarray:
+def _invoke_cohere(client: Any, model: str, input_type: str, texts: list[str]) -> list[np.ndarray]:
+    resp = client.invoke_model(
+        modelId=model,
+        contentType="application/json",
+        accept="application/json",
+        body=json.dumps(
+            {"texts": texts, "input_type": _COHERE_INPUT_TYPES[input_type], "truncate": "END"}
+        ),
+    )
+    rows = json.loads(resp["body"].read())["embeddings"]
+    if len(rows) != len(texts):
+        raise ValueError(f"expected {len(texts)} embeddings, got {len(rows)}")
+    return [_normalise(np.asarray(r, dtype=np.float32)) for r in rows]
+
+
+def _invoke_titan(client: Any, model: str, text: str) -> np.ndarray:
     resp = client.invoke_model(
         modelId=model,
         contentType="application/json",
@@ -121,8 +153,8 @@ def _lookup(con: sqlite3.Connection, model: str, keys: set[str]) -> dict[str, np
     return found
 
 
-def _key(text: str) -> str:
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+def _key(model: str, input_type: str, text: str) -> str:
+    return hashlib.sha256(f"{model}\x1f{input_type}\x1f{text}".encode()).hexdigest()
 
 
 def _fake_vector(text: str) -> np.ndarray:
