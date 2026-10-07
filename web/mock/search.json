@@ -1,0 +1,43 @@
+{
+  "results": [
+    {
+      "chunk_id": "a1b2c3d4e5f60718:4:1",
+      "doc_id": "a1b2c3d4e5f60718",
+      "title": "Pekeliling Perbendaharaan Bil. 3/2024",
+      "page": 4,
+      "snippet": "...kadar elaun perjalanan bagi kontraktor adalah RM0.70 bagi setiap kilometer. Tuntutan mesti disokong oleh log perjalanan yang disahkan oleh pegawai penyelia...",
+      "score": 0.0312,
+      "doc_type": "circular",
+      "department": "Jabatan Kewangan",
+      "status": "current",
+      "superseded_by": null,
+      "lang": "ms"
+    },
+    {
+      "chunk_id": "b2c3d4e5f6071829:7:0",
+      "doc_id": "b2c3d4e5f6071829",
+      "title": "Procurement Guidelines 2023",
+      "page": 7,
+      "snippet": "...direct purchase is permitted for procurement not exceeding RM50,000 per transaction. Quotations from at least three suppliers are required above RM20,000...",
+      "score": 0.0287,
+      "doc_type": "guideline",
+      "department": "Jabatan Perolehan",
+      "status": "current",
+      "superseded_by": null,
+      "lang": "en"
+    },
+    {
+      "chunk_id": "c3d4e5f607182930:2:3",
+      "doc_id": "c3d4e5f607182930",
+      "title": "Pekeliling Perbendaharaan Bil. 5/2019 (Elaun Perjalanan)",
+      "page": 2,
+      "snippet": "...had perolehan secara pembelian terus ialah RM20,000 dan kadar elaun perjalanan ialah RM0.60 sekilometer bagi semua pegawai kontrak...",
+      "score": 0.0241,
+      "doc_type": "circular",
+      "department": "Jabatan Kewangan",
+      "status": "superseded",
+      "superseded_by": "a1b2c3d4e5f60718",
+      "lang": "ms"
+    }
+  ]
+}

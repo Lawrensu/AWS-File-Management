@@ -41,7 +41,7 @@ English. Why: `docs/BRAINSTORM.md`. Who does what: `docs/PLAN.md`.
   Claude via the `anthropic` SDK's `AnthropicBedrockMantle(aws_region=...)`; model IDs in
   `.env`. Region in `.env`, default `ap-southeast-1`. Confirm model access in the console.
 - `EMBED_FAKE=1` runs everything without AWS credentials (BM25 only).
-- Web: Next.js 14 app router, Tailwind, `pnpm`.
+- Web: Next.js (app router, latest from create-next-app), React 19, Tailwind 4, `pnpm`.
 
 ## Conventions
 
