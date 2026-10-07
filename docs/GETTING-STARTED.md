@@ -36,6 +36,9 @@ cp .env.example .env
 aws sts get-caller-identity
 ```
 
+- The AWS account is Lawrence's, paid from a $100 credit. Ask him for an IAM access key with Bedrock access only. Never share keys in the group chat.
+- `GROQ_API_KEY` turns on the free Groq fallback for tagging and answers. Get a key at `console.groq.com`. No credit card is needed.
+- Groq has no embeddings. If Bedrock is down, search runs on BM25 only.
 - `S3_BUCKET` is optional. Leave it empty to keep uploads in `data/uploads/`.
 - `INDEX_PATH` defaults to `data/index.sqlite`.
 - `NEXT_PUBLIC_API_URL` defaults to `http://localhost:8000`.

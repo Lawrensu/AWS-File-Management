@@ -44,6 +44,8 @@ Rules for every coding agent and every human on this repo. `CLAUDE.md` and
 - Embeddings: `amazon.titan-embed-text-v2:0` via boto3.
 - Claude: the `anthropic` SDK's `AnthropicBedrockMantle(aws_region=...)`. Model IDs are in `.env`.
 - Region is in `.env`. The default is `ap-southeast-1`. Confirm model access in the console.
+- Fallback: Groq free tier for tagging and answers when Bedrock fails, via `GROQ_API_KEY`. No embedding fallback; search drops to BM25 only.
+- No paid services. Bedrock runs on a $100 credit with a $1 budget alert.
 - `EMBED_FAKE=1` runs everything without AWS credentials, on BM25 only.
 - Web: Next.js app router, React 19, Tailwind 4, `pnpm`.
 
