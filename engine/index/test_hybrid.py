@@ -3,8 +3,19 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from engine.index.hybrid import SUPERSEDED_RANK_OFFSET, Filters, hybrid_search, rrf
+from engine.index.hybrid import (
+    CROSS_LANGUAGE_OFFSET,
+    SUPERSEDED_RANK_OFFSET,
+    Filters,
+    hybrid_search,
+    query_language,
+    rrf,
+)
 from engine.testing import FakeStore, make_chunk, make_document
+
+MALAY_Q = "Berapakah had pembelian terus untuk perolehan?"
+ENGLISH_Q = "What is the current car mileage claim rate?"
+UNKNOWN_Q = "password policy"  # langdetect says Polish
 
 RESULT_KEYS = {
     "chunk_id",
@@ -43,9 +54,9 @@ class RankedStore(FakeStore):
         return [(cid, 1.0 - i / 1000) for i, cid in enumerate(self.vector[:k])]
 
 
-def add(store: FakeStore, i: int, text: str = "teks", **doc_fields) -> str:
+def add(store: FakeStore, i: int, text: str = "teks", lang: str = "ms", **doc_fields) -> str:
     store.upsert_document(make_document(doc_id(i), title=f"Dokumen {i}", **doc_fields))
-    chunk = make_chunk(doc_id(i), text=text, seed=i)
+    chunk = make_chunk(doc_id(i), text=text, seed=i, lang=lang)
     store.upsert_chunks([chunk])
     return chunk["chunk_id"]
 
@@ -193,3 +204,64 @@ def test_chunk_without_its_document_is_skipped():
     store.upsert_chunks([orphan])
     kept = add(store, 1, "elaun dengan dokumen")
     assert ids(hybrid_search(store, "elaun", None, Filters())) == [kept]
+
+
+# cross-language fusion
+
+
+def test_query_language():
+    assert query_language(MALAY_Q) == "ms"  # langdetect calls it "id"
+    assert query_language(ENGLISH_Q) == "en"
+    assert query_language(UNKNOWN_Q) is None
+    assert query_language("") is None
+    assert query_language("12345") is None
+
+
+def cross_language_setup() -> tuple[RankedStore, str, list[str]]:
+    # Malay question; the answer is an English chunk only the vectors find. Three Malay
+    # chunks match on keywords but sit low in the vector ranking.
+    store = RankedStore([], [])
+    answer = add(store, 1, lang="en")
+    noise = [add(store, 10 + i) for i in range(3)]
+    filler = [add(store, 20 + i) for i in range(8)]
+    store.bm25 = noise
+    store.vector = [answer, *filler, *noise]
+    return store, answer, noise
+
+
+def test_cross_language_answer_beats_keyword_noise():
+    store, answer, _ = cross_language_setup()
+    assert ids(hybrid_search(store, MALAY_Q, np.ones(4), Filters()))[0] == answer
+
+
+def test_unknown_query_language_falls_back_to_plain_rrf():
+    store, answer, noise = cross_language_setup()
+    assert ids(hybrid_search(store, UNKNOWN_Q, np.ones(4), Filters()))[:4] == [*noise, answer]
+
+
+def test_same_language_agreement_still_wins():
+    # A wrong Malay chunk tops the vectors, but both lists agree on the English answer.
+    store = RankedStore([], [])
+    right, wrong = add(store, 1, lang="en"), add(store, 2, lang="ms")
+    store.bm25, store.vector = [right], [wrong, right]
+    assert ids(hybrid_search(store, ENGLISH_Q, np.ones(4), Filters())) == [right, wrong]
+
+
+def test_cross_language_chunk_keeps_a_better_keyword_rank():
+    # An exact match across languages (a figure like RM50,000) keeps its keyword rank.
+    store = RankedStore([], [])
+    match = add(store, 1, lang="ms")
+    filler = [add(store, 10 + i, lang="en") for i in range(7)]
+    store.bm25, store.vector = [match], [*filler, match]
+    scores = {
+        r["chunk_id"]: r["score"] for r in hybrid_search(store, ENGLISH_Q, np.ones(4), Filters())
+    }
+    assert scores[match] == pytest.approx(1 / (60 + 8) + 1 / (60 + 1))
+    assert scores[filler[0]] == pytest.approx(1 / (60 + 1))
+
+
+def test_imputed_rank_is_vector_rank_plus_offset():
+    store, answer, _ = cross_language_setup()
+    [top] = hybrid_search(store, MALAY_Q, np.ones(4), Filters(), top_k=1)
+    assert top["chunk_id"] == answer
+    assert top["score"] == pytest.approx(1 / 61 + 1 / (61 + CROSS_LANGUAGE_OFFSET))
