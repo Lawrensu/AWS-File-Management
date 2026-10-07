@@ -34,7 +34,26 @@ Intelligent document search and Q&A for government agencies. AWS hackathon, 4-ho
 
    Lawrence only: `cd web` happens after task D1 creates it, not before.
 
-5. **Start your first task.** Look at the `Mode` column.
+5. **Kick off your agent.** Open your agent in the repo root (Claude Code: `claude`,
+   Kiro: open the folder, Cursor: open the folder). Paste this as the first message,
+   with your name filled in:
+
+   ```
+   I am <name>, owner of workstream <letter> in docs/PLAN.md. Read AGENTS.md,
+   contracts/README.md, and my workstream table in docs/PLAN.md. Then tell me, in order:
+   (1) which of my tasks are [A] with no dependency, so I can start them now,
+   (2) which [H] task I should do myself first while those run,
+   (3) anything in the setup that is missing on this machine (run `uv sync --extra dev`
+   and `aws sts get-caller-identity` to check).
+   Do not write any code yet.
+   ```
+
+   The agent answers with your starting lineup. Then, for each [A] task it named, open a
+   fresh agent session and paste that task's block from `docs/AGENT-PROMPTS.md`. One task
+   per session so the agents do not step on each other. Keep your main session for your
+   [H] task.
+
+6. **Work the tasks.** Look at the `Mode` column.
    - **[A]**: open `docs/AGENT-PROMPTS.md`, find the block with your task ID, paste it into
      your agent (Claude Code, Kiro, Cursor, DeepSeek, any of them). The agent reads
      `AGENTS.md` and the contracts itself. Review the diff, run the test command, commit.
@@ -44,7 +63,7 @@ Intelligent document search and Q&A for government agencies. AWS hackathon, 4-ho
    Run your [A] tasks that have no dependency all at once, then do your [H] task while
    the agents work. The dependency graph is in `docs/PLAN.md` under "Dependencies".
 
-6. **Commit small, push often.**
+7. **Commit small, push often.**
 
    ```bash
    git add -A && git commit -m "<area>: <what>" && git push -u origin <yourname>/dev
