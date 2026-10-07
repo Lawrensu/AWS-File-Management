@@ -1,7 +1,8 @@
 # Answer prompt (task C3)
 
-Model: `BEDROCK_ANSWER_MODEL` (Claude Sonnet on Bedrock) via `AnthropicBedrockMantle`.
-Streaming. `max_tokens` 1500. Chunks are the top 8 from hybrid search, numbered in rank order.
+Called through `engine.llm.stream(role="answer")`. Bedrock (`BEDROCK_ANSWER_MODEL`, Claude Sonnet) is
+tried first and Groq (`GROQ_ANSWER_MODEL`) second. Streaming. `max_tokens` 1500. Chunks are the top 8
+from hybrid search, numbered in rank order, or the top 5 when `preferred_provider("answer")` is `groq`.
 
 ## System
 

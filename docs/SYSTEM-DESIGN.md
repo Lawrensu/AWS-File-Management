@@ -29,10 +29,10 @@ Rujuk consists of:
 	- langdetect: language tag per chunk and per query
 	- rapidfuzz: fuzzy title match for supersession
 - AI
-	- Amazon Bedrock, Titan Text Embeddings v2: embeddings, cross-language matching
+	- Amazon Bedrock, Cohere Embed Multilingual v3 in `ap-southeast-1`: embeddings, cross-language matching
 	- Amazon Bedrock, Claude Haiku: tags and supersession, cheapest capable model
 	- Amazon Bedrock, Claude Sonnet: cited answers
-	- Groq free tier: fallback for tags and answers, `llama-3.1-8b-instant` and `llama-3.3-70b-versatile`
+	- Groq free tier: fallback for tags and answers, `openai/gpt-oss-120b` for both
 	- Amazon Textract: OCR for scanned pages, stretch goal
 - Frontend
 	- Next.js 16.4.0 app router: routes and server rendering
@@ -104,7 +104,7 @@ Cross sectional view of the application:
 5. Extract keywords with YAKE and detect language with langdetect.
 6. Tag with Claude Haiku from the closed taxonomy. The same call lists what the document supersedes.
 7. If Bedrock fails, tag with Groq. If that fails, use default tags. Ingest never fails on a tag.
-8. Embed chunks with Titan v2. With `EMBED_FAKE=1`, chunks get no real vectors and search runs on BM25 only.
+8. Embed chunks with Cohere Embed Multilingual v3. With `EMBED_FAKE=1`, chunks get no real vectors and search runs on BM25 only.
 9. Write the document and chunks to the store. Ingest is idempotent on `doc_id`.
 10. After the whole folder, run supersession once.
 
@@ -129,6 +129,8 @@ Cross sectional view of the application:
 - Closed tag taxonomy: tags stay consistent and can drive filters.
 - Tags run once per document on the cheapest capable model: cost stays low.
 - BM25 plus vectors with RRF: keywords catch exact terms, vectors catch cross-language matches.
+- Cohere Embed Multilingual v3 for embeddings: Titan v2 is not offered in `ap-southeast-1`, and staying in that region keeps data close to Sarawak. It is multilingual and has the same 1024 dimensions, so the contracts and the index do not change.
+- Claude model IDs are pending a retest after AWS account verification.
 - Supersession is detected at ingest: the old document is badged and ranked lower, not removed.
 - Tags and embeddings are cached by content hash: re-ingest costs nothing.
 - Answers are capped at 8 chunks: cost and latency stay bounded.
@@ -137,7 +139,7 @@ Cross sectional view of the application:
 - Teammates develop with `EMBED_FAKE=1` and mocks: nobody is blocked on credentials.
 - Groq free tier is the fallback for tags and answers: it needs no credit card.
 - No embedding fallback: without Bedrock, search runs on BM25 only.
-- One shared `engine/llm.py` will hold the Bedrock call and the Groq fallback, added after A4 and C3.
+- One shared `engine/llm.py` holds the Bedrock call and the Groq fallback. Every LLM call goes through it. Bedrock Claude is blocked until the Anthropic use case form is approved, so Groq serves today.
 - Department scoping is in the UI as Cognito-ready: real access control is roadmap.
 - Figures without text, such as flowcharts, are cut: they need a multimodal model.
 - The name Rujuk is Malay for to refer or to consult.

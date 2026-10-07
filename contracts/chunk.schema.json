@@ -23,7 +23,7 @@
     "embedding": {
       "type": ["array", "null"],
       "items": { "type": "number" },
-      "description": "1024 floats from Titan Text Embeddings v2. Stored, never returned by the API."
+      "description": "1024 floats from Cohere Embed Multilingual v3. Stored, never returned by the API."
     }
   }
 }

@@ -30,7 +30,7 @@ engine/ingest/            A. File to chunks with text, page, bbox, keywords, tag
 	prompts/tagger.md       exists, tagger prompt and validation rules
 	extract.py              (planned) A1 PyMuPDF pages and blocks
 	chunker.py              (planned) A2 page chunks
-	embed.py                (planned) A3 Titan embeddings, cached
+	embed.py                (planned) A3 Cohere embeddings on Bedrock, cached
 	tagger.py               (planned) A4 Claude Haiku tags
 	keywords.py             (planned) A5 language and YAKE keywords
 	pipeline.py             (planned) A6 ingest_file and the CLI
@@ -41,7 +41,8 @@ engine/index/             B. Done
 	supersession.py         resolve_supersession
 	README.md               B notes, ahead of PLAN and SYSTEM-DESIGN
 engine/testing.py         FakeStore, make_document, make_chunk for every test
-engine/llm.py             (planned) shared Bedrock call and Groq fallback
+engine/llm.py             exists, the one LLM entry point: Bedrock first, Groq fallback
+engine/test_llm.py        exists, stub clients only
 api/                      C. FastAPI
 	main.py                 exists: app, CORS, lifespan placeholder, /health
 	prompts/answer.md       exists, answer prompt and post-processing rules
@@ -112,7 +113,7 @@ Required: `chunk_id`, `doc_id`, `page`, `text`, `lang`, `source`
 - `bbox: [x0, y0, x1, y1] | null` PDF points, origin top-left, of the first text block in the chunk
 - `text: str` not empty
 - `lang: str` `ms`, `en` or `mixed`
-- `embedding: list[float] | null` 1024 floats from Titan v2, stored, never returned by the API
+- `embedding: list[float] | null` 1024 floats from Cohere Embed Multilingual v3, stored, never returned by the API
 
 Id conventions:
 - `doc_id` is the sha256 of the file bytes, first 16 hex, so ingest is idempotent
@@ -123,7 +124,7 @@ Id conventions:
 Code in `engine/ingest/`, none of it is built yet. Steps from PLAN A1 to A7:
 1. A1 `extract_pages(path: str | Path) -> list[Page]` with PyMuPDF, text and blocks with bbox, `is_scanned` when a page has under 50 characters
 2. A2 `chunk_pages(doc_id: str, pages: list[Page], max_tokens: int = 800, overlap: int = 100) -> list[dict]` per page, 800 words with 100 overlap, keeps page and first-block bbox
-3. A3 `embed_texts(texts) -> np.ndarray` 1024 dims, rows normalised, Titan v2 via boto3, batched, cached by sha256 in `~/.cache/rujuk/embed.sqlite`, `EMBED_FAKE=1` returns deterministic hash-seeded vectors
+3. A3 `embed_texts(texts, input_type="document") -> np.ndarray` 1024 dims, rows normalised, Cohere Embed Multilingual v3 via boto3 `invoke_model` in `ap-southeast-1`, batches of 96, cached by sha256 of model, input type and text in `~/.cache/rujuk/embed.sqlite`, `EMBED_FAKE=1` returns deterministic hash-seeded vectors
 4. A4 `tag_document(filename, text) -> dict` Claude Haiku on Bedrock, prompt in `engine/ingest/prompts/tagger.md`, bad JSON falls back, never fails ingest
 5. A5 `detect_lang(text) -> str` and `extract_keywords(text, lang, top_k=10) -> list[str]` with langdetect and YAKE
 6. A6 `ingest_file(path, store) -> IngestResult` idempotent on `doc_id`, CLI `python -m engine.ingest <folder>` ingests all files, then calls `resolve_supersession(store)` once
@@ -188,16 +189,32 @@ Code in `engine/index/`. All access goes through `IndexStore`.
 
 ## LLM Providers
 
-- Bedrock is primary, model IDs and region come from `.env`, never hardcoded:
-	- `BEDROCK_EMBED_MODEL` (Titan Text Embeddings v2)
-	- `BEDROCK_TAG_MODEL` (Claude Haiku)
-	- `BEDROCK_ANSWER_MODEL` (Claude Sonnet) via `AnthropicBedrockMantle(aws_region=...)`
-- Groq free tier is the fallback for tagging and answers, `GROQ_API_KEY`, `GROQ_TAG_MODEL`, `GROQ_ANSWER_MODEL`, empty key disables it
-- No embedding fallback, search drops to BM25 only (`query_vec=None`)
+- `engine/llm.py` is the one LLM entry point. Every model call goes through it, and nothing else imports `anthropic` or `groq`
+- Interface:
+	- `complete(system, user, *, role, max_tokens, json_schema=None) -> LLMResult`, where `role` is `"tag"` or `"answer"` and `LLMResult` has `text`, `provider`, `model`, `input_tokens`, `output_tokens`
+	- `stream(system, user, *, role, max_tokens) -> StreamResult`, iterate it for text deltas, read `.provider` and `.model` for who is answering. It returns after the first token has arrived
+	- `preferred_provider(role) -> "bedrock" | "groq"`, what the next call will try first. `/ask` uses it to send 8 chunks to Bedrock or 5 to Groq
+	- `LLMUnavailable` is raised when no provider is available or every one tried failed. Callers decide what to do: the tagger returns its fallback tags
+- Provider order is Bedrock first, then Groq:
+	- Bedrock is skipped when `EMBED_FAKE=1`, which means there is no AWS on this machine
+	- Groq is skipped when `GROQ_API_KEY` is empty
+	- Fallback to the next provider happens only before the first token. If Bedrock fails mid-stream, the exception is raised
+- Circuit breaker: after a Bedrock failure for a role, Bedrock is skipped for that role for `LLM_BEDROCK_COOLDOWN` seconds (default 300), so every call does not pay the failure latency. The cooldown is ignored when Groq is not available, because there is nothing else to try
+- `BEDROCK_CLIENT` picks the Bedrock client:
+	- `mantle` (default): the `anthropic` SDK's `AnthropicBedrockMantle(aws_region=AWS_REGION)`
+	- `converse`: boto3 `bedrock-runtime` `converse` and `converse_stream`
+- Config comes from `.env`, never hardcoded: `AWS_REGION`, `BEDROCK_TAG_MODEL` (Claude Haiku), `BEDROCK_ANSWER_MODEL` (Claude Sonnet), `GROQ_TAG_MODEL`, `GROQ_ANSWER_MODEL`, `GROQ_API_KEY`, `BEDROCK_CLIENT`, `LLM_BEDROCK_COOLDOWN`. The defaults in `engine/llm.py` are only for unset variables. Both Groq models are `openai/gpt-oss-120b`
+- `openai/gpt-oss` models reason before they answer, and reasoning tokens count against `max_tokens`. On Groq they run with `reasoning_effort` `low`, and `max_tokens` has a floor of 1024 for `tag` and 2048 for `answer`, so the visible answer is not cut off. Other Groq models get neither
+- `json_schema` on Groq turns on JSON mode (`response_format` `json_object`) and appends a one-line instruction to return only JSON with the schema's keys. Bedrock gets the same one-line instruction, not a native structured-output request, so callers still parse and validate
+- Current state: Claude on Bedrock is blocked for the AWS account until the Anthropic use case form is approved. Mantle returns 404 "model does not exist" and Converse returns "use case details have not been submitted". Groq serves every tag and answer today. Once the form is approved, Bedrock takes over with no code change
+- No embedding fallback, search drops to BM25 only (`query_vec=None`). Embeddings are not an LLM call and stay in `engine/ingest/embed.py`
 - On Groq, `/ask` uses the top 5 chunks instead of 8, to fit the free tier's token limit
 - A Bedrock failure must never crash ingest or the API
-- AWS credentials exist only on Lawrence's machine, the vertical slice and the demo run there
-- `engine/llm.py` (planned) will hold the shared Bedrock call and Groq fallback, added after A4 and C3 are done
+- Embeddings use Cohere request fields `texts`, `input_type` and `truncate: END`
+- Documents embed with `input_type="document"` (`search_document`), the default. API code embeds questions with `input_type="query"` (`search_query`). The two are cached separately
+- Cohere on Bedrock rejects a text longer than 2048 characters. `embed_texts` trims each text to its first 2048 characters before sending, so the embedding covers the first 2048 characters of a chunk and BM25 covers all of it. The stored chunk text is unchanged. Titan inputs are not trimmed. Seed-corpus chunks run up to about 2450 characters, so some are trimmed
+- A model ID starting with `amazon.titan` switches `embed_texts` back to the Titan v2 request, one text per call, so going back is a config change
+- Only Lawrence's machine has model access, AWS and Groq. The vertical slice, the demo and real end to end tests run there. Elsewhere `engine.llm` raises `LLMUnavailable`, which is expected, and tests stub `engine.llm` and `embed_texts`
 
 ## Prompts
 
@@ -254,7 +271,7 @@ Requirement names follow [System Design](../SYSTEM-DESIGN.md). A planned item is
 - Chunk by page at 800 words with 100 overlap: `chunk_pages` (planned) -> none -> `Chunk`
 - Extract keywords and detect language: `extract_keywords`, `detect_lang` (planned) -> none -> `Document.keywords`, `lang`
 - Tag from a closed taxonomy and find what a document supersedes: `tag_document` (planned) -> none -> `Document` fields
-- Embed with Titan v2: `embed_texts` (planned) -> none -> embedding never returned
+- Embed with Cohere Embed Multilingual v3: `embed_texts` (planned) -> none -> embedding never returned
 - Write to the index, idempotent on `doc_id`: `ingest_file` (planned), `IndexStore.upsert_document`, `upsert_chunks` -> `POST /documents/upload` (planned) -> upload response
 - Resolve supersession after the whole folder: `resolve_supersession` -> `POST /documents/upload` (planned) -> `status`, `superseded_by`
 - Search by meaning in both languages: `embed_texts` (planned), `hybrid_search`, `bm25_search`, `vector_search` -> `POST /search` (planned) -> `SearchResult`
@@ -269,7 +286,7 @@ Requirement names follow [System Design](../SYSTEM-DESIGN.md). A planned item is
 - Questions are `{question, expected_filename}`, compared by filename stem, so a manifest `.md` matches the indexed `.pdf`
 - Embeds every question in one batched call through `engine.ingest.embed.embed_texts` (planned), falls back to BM25 only if that module is missing
 - `--bm25-only` skips embeddings and needs no AWS, `EMBED_FAKE=1` also runs BM25 only
-- B notes: BM25 only recall@5 is 5/10 on the seed corpus, real Titan vectors not measured yet
+- B notes: BM25 only recall@5 is 5/10 on the seed corpus, real Cohere vectors not measured yet
 
 ---
 
@@ -277,7 +294,7 @@ Requirement names follow [System Design](../SYSTEM-DESIGN.md). A planned item is
 
 - Build `engine/ingest/` A1 to A6, then A7 Textract as a stretch
 - Build `api/` C1 to C5, and `api/models.py`
-- Run the eval with real Titan vectors and tune `CROSS_LANGUAGE_OFFSET` (planned for 2:30)
+- Run the eval with real Cohere vectors and tune `CROSS_LANGUAGE_OFFSET` (planned for 2:30)
 
 ---
 
@@ -286,7 +303,7 @@ Requirement names follow [System Design](../SYSTEM-DESIGN.md). A planned item is
 - `contracts/api.md` says `confidence` is `high` or `low`, `api/prompts/answer.md` also uses `medium`
 - The `/ask` threshold of 0.03 sits near the ceiling of 0.0328, and BM25 only tops out at 0.0164 so no answer is ever high there (from the B notes)
 - The tagger prompt returns a `summary` stored on the document for the UI card, but `document.schema.json` has no `summary` field and sets `additionalProperties: false`
-- Tagger fallback differs: System Design says Bedrock, then Groq, then default tags, `tagger.md` says retry once, then defaults, with no Groq step
+- Tagger: a Groq `json_validate_failed` (HTTP 400) is retried once inside the tagger. Fallback: it now calls `engine.llm.complete`, which tries Bedrock then Groq, and falls back to default tags on `LLMUnavailable`. `tagger.md` still describes only the retry and the defaults
 - `tag_document` is `(filename, text) -> dict` in PLAN, `(title, text) -> DocMeta` in `engine/ingest/__init__.py`, and `tagger.md` passes filename and text
 - PLAN C1 says fall back to `FakeStore` if B1 is missing, the B notes say that fallback is no longer needed. `api/main.py` still sets `app.state.store = None` (TODO(C1)), so `/health` reports 0 and 0
 - `api/main.py` docstring lists `models.py`, `search.py`, `ask.py`, `documents.py`, `upload.py`, none exist

@@ -10,7 +10,9 @@
 [A] means hand it to an agent with the matching block in `docs/AGENT-PROMPTS.md` and review
 the diff. [H] means do it yourself. Tests use `engine/testing.py` (`FakeStore`,
 `make_document`, `make_chunk`) so nobody waits for the real store. Set `EMBED_FAKE=1` to run
-anything without AWS credentials.
+anything without AWS credentials. Only Lawrence's machine has model access (AWS and Groq): everyone
+else leaves `GROQ_API_KEY` empty, stubs `engine.llm` and `embed_texts` in tests, and does not debug
+provider errors.
 
 ## Who blocks whom
 
@@ -67,8 +69,9 @@ chat. Everything else runs in parallel against `FakeStore` or mock JSON.
 - A2 [A] `chunk_pages(doc_id, pages) -> list[Chunk]`. Per page, 800 words, 100 overlap,
   keep page and first-block bbox.
   Done: short page gives 1 chunk, long page gives n, ids unique.
-- A3 [H] `embed_texts(texts) -> np.ndarray`, 1024 dims, rows normalised. Titan v2 via boto3,
-  batched, cached by sha256 in `~/.cache/rujuk/embed.sqlite`. Keep an `EMBED_FAKE=1` branch
+- A3 [H] `embed_texts(texts) -> np.ndarray`, 1024 dims, rows normalised. Cohere Embed Multilingual v3 on
+  Bedrock via boto3, `input_type="document"` for ingest and `"query"` for questions, batches of 96,
+  cached by sha256 in `~/.cache/rujuk/embed.sqlite`. Keep an `EMBED_FAKE=1` branch
   that returns deterministic hash-seeded vectors.
   Done: repeat call makes zero API calls.
 - A4 [H] `tag_document(filename, text) -> dict` via Claude Haiku on Bedrock. Prompt and
@@ -115,10 +118,14 @@ chat. Everything else runs in parallel against `FakeStore` or mock JSON.
   `contracts/`. Lifespan opens `SqliteStore(INDEX_PATH)` and falls back to `FakeStore()`
   with a warning if B1 is not there yet.
   Done: `/health` returns 200.
-- C2 [A] `POST /search`. Embed the query; on failure pass `query_vec=None`. Call B2.
+- C2 [A] `POST /search`. Embed the query with `embed_texts([q], input_type="query")`; on failure
+  pass `query_vec=None`. Call B2.
   Done: curl returns results.
-- C3 [H] `POST /ask`. Top 8 chunks, Claude Sonnet on Bedrock via `AnthropicBedrockMantle`,
-  SSE stream, `[n]` markers mapped to citations. Prompt and post-processing in
+- C3 [H] `POST /ask`. Call `engine.llm.stream(role="answer")`, never a provider SDK. Ask
+  `engine.llm.preferred_provider("answer")` first: 8 chunks for Bedrock, 5 for Groq. Report the
+  provider and model actually used from the `StreamResult`. `LLMUnavailable` returns 503 with
+  `{"error": ...}`. SSE
+  stream, `[n]` markers mapped to citations. Prompt and post-processing in
   `api/prompts/answer.md`.
   Done: 3 scripted questions right, the trick question is refused, a superseded doc is
   named as superseded.

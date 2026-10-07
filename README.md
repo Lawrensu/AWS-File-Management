@@ -4,10 +4,10 @@ Rujuk is document search and Q&A for government agencies, built for an AWS hacka
 
 ## Team
 
-- Lawrence: Prepped the repo, UI, seed corpus, demo
-- Malissa: ingest pipeline
-- Noah: index and retrieval
-- Cyndia: API and answer generation
+- Lawrence Lian Anak Matius Ding (102789563): Prepped the repo, UI, seed corpus, demo
+- Malissa (104394134): ingest pipeline
+- Noah (104403881): index and retrieval
+- Cyndia (104381602): API and answer generation
 
 ## Screenshots
 

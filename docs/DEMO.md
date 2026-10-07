@@ -50,7 +50,7 @@ Script for the 3 to 4 minute live demo. The presenter and whoever records the ba
 - Bilingual: ask in Malay or English, and get answers from documents in either language.
 - Supersession: replaced circulars are flagged, so nobody acts on an old rule.
 - Department scoping: each view is filtered by department, ready for Cognito sign-in.
-- AWS: Amazon Bedrock with Titan Text Embeddings v2 for search, Claude Haiku for tagging, and Claude Sonnet for answers.
+- AWS: Amazon Bedrock with Cohere Embed Multilingual v3 in `ap-southeast-1` for search, Claude Haiku for tagging, and Claude Sonnet for answers.
 - Say Textract only if scanned-page OCR landed. Say S3 only if uploads write to S3.
 
 ## Recording checklist
