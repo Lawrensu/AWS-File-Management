@@ -18,7 +18,7 @@ import numpy as np
 
 DIM = 1024
 DEFAULT_MODEL = "amazon.titan-embed-text-v2:0"
-MAX_WORKERS = 8
+MAX_WORKERS = 4
 
 
 def embed_texts(texts: list[str]) -> np.ndarray:
@@ -72,9 +72,11 @@ def embed_texts(texts: list[str]) -> np.ndarray:
 
 def _bedrock_client() -> Any:
     import boto3
+    from botocore.config import Config
 
     region = os.environ.get("AWS_REGION", "ap-southeast-1")
-    return boto3.client("bedrock-runtime", region_name=region)
+    config = Config(retries={"mode": "adaptive", "max_attempts": 8})
+    return boto3.client("bedrock-runtime", region_name=region, config=config)
 
 
 def _invoke(client: Any, model: str, text: str) -> np.ndarray:

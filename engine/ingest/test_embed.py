@@ -115,3 +115,22 @@ def test_partial_failure_caches_successes(fake: FakeBedrock) -> None:
     out = embed_texts(["a", "bad", "b"])
     assert len(fake.calls) == 4  # only "bad" is re-requested
     assert out.shape == (3, DIM)
+
+
+def test_max_workers_is_four() -> None:
+    assert embed.MAX_WORKERS == 4
+
+
+def test_bedrock_client_uses_adaptive_retries(monkeypatch: pytest.MonkeyPatch) -> None:
+    import boto3
+
+    seen: dict = {}
+
+    def fake_client(service: str, **kw: object) -> object:
+        seen["service"], seen["kw"] = service, kw
+        return object()
+
+    monkeypatch.setattr(boto3, "client", fake_client)
+    embed._bedrock_client()
+    assert seen["service"] == "bedrock-runtime"
+    assert seen["kw"]["config"].retries == {"mode": "adaptive", "max_attempts": 8}

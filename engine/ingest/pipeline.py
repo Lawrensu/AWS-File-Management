@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -28,15 +29,21 @@ class IngestResult(BaseModel):
     status: str
     department: str
     skipped: bool = False  # True when doc_id was already in the store
+    scanned_pages_skipped: int = 0  # scanned pages left out of the index (no OCR yet)
+    embedding_failed: bool = False  # True when embedding failed and chunks have no vectors
 
 
-def ingest_file(path: str | Path, store: IndexStore) -> IngestResult:
-    """Ingest one PDF. Idempotent on doc_id = sha256(file bytes)[:16]."""
+def ingest_file(path: str | Path, store: IndexStore, force: bool = False) -> IngestResult:
+    """Ingest one PDF. Idempotent on doc_id = sha256(file bytes)[:16].
+
+    An existing doc_id is skipped unless force is True, which re-ingests it and replaces
+    its chunks.
+    """
     path = Path(path)
     doc_id = hashlib.sha256(path.read_bytes()).hexdigest()[:16]
 
     existing = store.get_document(doc_id)
-    if existing is not None:
+    if existing is not None and not force:
         return IngestResult(
             doc_id=doc_id,
             title=existing["title"],
@@ -50,6 +57,7 @@ def ingest_file(path: str | Path, store: IndexStore) -> IngestResult:
     pages = extract_pages(path)
     # TODO(A7): scanned pages are skipped; OCR them with Textract and chunk with source="textract".
     text_pages = [p for p in pages if not p.is_scanned]
+    scanned_skipped = len(pages) - len(text_pages)
     chunks = chunk_pages(doc_id, text_pages)
     for chunk in chunks:
         chunk["lang"] = detect_lang(chunk["text"])  # local langdetect, not a model call
@@ -59,7 +67,6 @@ def ingest_file(path: str | Path, store: IndexStore) -> IngestResult:
 
     full_text = "\n".join(p.text for p in text_pages)
     lang = tags["lang"] or detect_lang(full_text)
-    # TODO(A): add "summary" to contracts/document.schema.json, then store tags["summary"].
     doc: Document = {
         "doc_id": doc_id,
         "title": tags["title"],
@@ -73,16 +80,24 @@ def ingest_file(path: str | Path, store: IndexStore) -> IngestResult:
         "status": "current",
         "supersedes": tags["supersedes"],
         "superseded_by": None,
+        "summary": tags.get("summary") or None,
         "keywords": extract_keywords(full_text, lang),
         "page_count": len(pages),
         "has_scanned_pages": any(p.is_scanned for p in pages),
         "ingested_at": datetime.now(UTC).isoformat(),
     }
 
+    embedding_failed = False
     if chunks:
-        vecs = embed_texts([c["text"] for c in chunks])  # one batch per document
-        for chunk, vec in zip(chunks, vecs):
-            chunk["embedding"] = vec
+        try:
+            vecs = embed_texts([c["text"] for c in chunks])  # one batch per document
+            for chunk, vec in zip(chunks, vecs):
+                chunk["embedding"] = vec
+        except Exception as exc:  # noqa: BLE001 - a Bedrock failure must never crash ingest
+            print(f"warning: no embeddings for {path.name} ({type(exc).__name__})", file=sys.stderr)
+            embedding_failed = True
+            for chunk in chunks:
+                chunk["embedding"] = None  # search falls back to BM25 for these chunks
 
     # Chunks first, document last: the document row marks a finished ingest, so a crash
     # between the two writes leaves no document and the next run retries the file.
@@ -97,4 +112,6 @@ def ingest_file(path: str | Path, store: IndexStore) -> IngestResult:
         chunks=len(chunks),
         status=doc["status"],
         department=doc["department"],
+        scanned_pages_skipped=scanned_skipped,
+        embedding_failed=embedding_failed,
     )

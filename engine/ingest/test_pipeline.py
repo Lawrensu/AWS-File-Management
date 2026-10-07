@@ -95,7 +95,7 @@ def test_ingest_two_page_pdf(tmp_path: Path, stages: tuple[Counter, Counter]) ->
     assert doc["status"] == "current"
     assert doc["lang"] == "ms"
     assert doc["filename"] == "doc.pdf"
-    assert "summary" not in doc
+    assert doc["summary"] == TAGS["summary"]
     props = json.loads(SCHEMA.read_text(encoding="utf-8"))["properties"]
     assert set(doc) <= set(props)
     assert set(json.loads(SCHEMA.read_text(encoding="utf-8"))["required"]) <= set(doc)
@@ -220,3 +220,137 @@ def test_failed_chunk_write_leaves_no_document(
     retry = ingest_file(path, store)
     assert retry.skipped is False
     assert retry.chunks >= 1
+
+
+def test_summary_stored_from_tagger(tmp_path: Path, stages: tuple[Counter, Counter]) -> None:
+    store = FakeStore()
+    result = ingest_file(_pdf(tmp_path / "doc.pdf", [MALAY]), store)
+    doc = store.get_document(result.doc_id)
+    assert doc is not None and doc["summary"] == "Kadar elaun perjalanan baharu."
+
+
+@pytest.mark.parametrize("summary", ["", None])
+def test_summary_none_when_missing_or_empty(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    stages: tuple[Counter, Counter],
+    summary: str | None,
+) -> None:
+    monkeypatch.setattr(pipeline, "tag_document", lambda f, t: {**TAGS, "summary": summary})
+    store = FakeStore()
+    result = ingest_file(_pdf(tmp_path / "doc.pdf", [MALAY]), store)
+    doc = store.get_document(result.doc_id)
+    assert doc is not None and doc["summary"] is None
+
+    no_key = {k: v for k, v in TAGS.items() if k != "summary"}
+    monkeypatch.setattr(pipeline, "tag_document", lambda f, t: dict(no_key))
+    store2 = FakeStore()
+    result2 = ingest_file(_pdf(tmp_path / "doc2.pdf", [MALAY + " Lagi."]), store2)
+    doc2 = store2.get_document(result2.doc_id)
+    assert doc2 is not None and doc2["summary"] is None
+
+
+def test_embed_failure_stores_chunks_without_embedding(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    stages: tuple[Counter, Counter],
+) -> None:
+    def boom(texts: list[str]) -> np.ndarray:
+        raise ConnectionError("bedrock down")
+
+    monkeypatch.setattr(pipeline, "embed_texts", boom)
+    store = FakeStore()
+    result = ingest_file(_pdf(tmp_path / "doc.pdf", [MALAY]), store)
+
+    assert store.get_document(result.doc_id) is not None
+    assert result.chunks >= 1
+    assert result.embedding_failed is True
+    stored = [c for c in store._chunks.values() if c["doc_id"] == result.doc_id]
+    assert len(stored) == result.chunks
+    assert all(c["embedding"] is None for c in stored)
+
+    captured = capsys.readouterr()
+    lines = [ln for ln in (captured.out + captured.err).splitlines() if "warning" in ln.lower()]
+    assert len(lines) == 1
+    assert "doc.pdf" in lines[0] and "ConnectionError" in lines[0]
+
+
+def test_embed_success_not_flagged(tmp_path: Path, stages: tuple[Counter, Counter]) -> None:
+    result = ingest_file(_pdf(tmp_path / "doc.pdf", [MALAY]), FakeStore())
+    assert result.embedding_failed is False
+
+
+def test_scanned_pages_counted(tmp_path: Path, stages: tuple[Counter, Counter]) -> None:
+    result = ingest_file(_pdf(tmp_path / "doc.pdf", [MALAY, "", ""]), FakeStore())
+    assert result.pages == 3
+    assert result.scanned_pages_skipped == 2
+    assert ingest_file(_pdf(tmp_path / "t.pdf", [MALAY]), FakeStore()).scanned_pages_skipped == 0
+
+
+def test_force_reingests_existing(tmp_path: Path, stages: tuple[Counter, Counter]) -> None:
+    tag, emb = stages
+    path = _pdf(tmp_path / "doc.pdf", [MALAY])
+    store = FakeStore()
+    first = ingest_file(path, store)
+    again = ingest_file(path, store, force=True)
+
+    assert again.skipped is False
+    assert again.doc_id == first.doc_id
+    assert len(tag.calls) == 2 and len(emb.calls) == 2
+    assert store.count() == (1, first.chunks)
+
+
+def test_cli_force_flag(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    stages: tuple[Counter, Counter],
+) -> None:
+    tag, _ = stages
+    _pdf(tmp_path / "a.pdf", [MALAY, ""])
+    monkeypatch.setattr(cli, "resolve_supersession", lambda store: [])
+    store = FakeStore()
+
+    assert cli.main([str(tmp_path)], store=store) == 0
+    capsys.readouterr()
+    assert cli.main([str(tmp_path)], store=store) == 0
+    assert "skipped a.pdf" in capsys.readouterr().out
+    assert len(tag.calls) == 1
+
+    assert cli.main([str(tmp_path), "--force"], store=store) == 0
+    out = capsys.readouterr().out
+    assert "ingested a.pdf" in out and "skipped a.pdf" not in out
+    assert len(tag.calls) == 2
+    assert store.count()[0] == 1
+    assert "warnings: 0 files with no embeddings, 1 scanned pages skipped" in out
+
+
+def test_cli_warning_line_only_when_needed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    stages: tuple[Counter, Counter],
+) -> None:
+    _pdf(tmp_path / "a.pdf", [MALAY])
+    monkeypatch.setattr(cli, "resolve_supersession", lambda store: [])
+    cli.main([str(tmp_path)], store=FakeStore())
+    assert "warnings:" not in capsys.readouterr().out
+
+
+def test_cli_counts_embedding_failures(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    stages: tuple[Counter, Counter],
+) -> None:
+    def boom(texts: list[str]) -> np.ndarray:
+        raise RuntimeError("x")
+
+    monkeypatch.setattr(pipeline, "embed_texts", boom)
+    monkeypatch.setattr(cli, "resolve_supersession", lambda store: [])
+    _pdf(tmp_path / "a.pdf", [MALAY])
+    assert cli.main([str(tmp_path)], store=FakeStore()) == 0
+    assert "warnings: 1 files with no embeddings, 0 scanned pages skipped" in (
+        capsys.readouterr().out
+    )

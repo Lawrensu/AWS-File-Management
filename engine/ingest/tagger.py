@@ -44,7 +44,10 @@ def tag_document(filename: str, text: str) -> dict[str, Any]:
     """Return title, doc_type, department, topics, year, lang, supersedes, summary.
 
     One model call per document, two if the first reply is not valid JSON.
+    EMBED_FAKE=1 returns the fallback tags at once, with no network call.
     """
+    if os.environ.get("EMBED_FAKE") == "1":
+        return fallback(filename)
     try:
         if not text.strip():
             return fallback(filename)

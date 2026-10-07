@@ -9,6 +9,7 @@ dependencies = [
     "pydantic>=2.8",
     "python-multipart>=0.0.9",
     "boto3>=1.35",
+    "botocore[crt]>=1.35",
     "anthropic[bedrock]>=0.40",
     "pymupdf>=1.24",
     "rank-bm25>=0.2.2",

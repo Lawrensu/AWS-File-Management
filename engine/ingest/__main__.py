@@ -22,6 +22,9 @@ def main(argv: list[str] | None = None, store: IndexStore | None = None) -> int:
 
     parser = argparse.ArgumentParser(prog="python -m engine.ingest")
     parser.add_argument("folder", help="folder of PDFs to ingest")
+    parser.add_argument(
+        "--force", action="store_true", help="re-ingest files already in the index"
+    )
     args = parser.parse_args(argv)
 
     folder = Path(args.folder)
@@ -34,14 +37,18 @@ def main(argv: list[str] | None = None, store: IndexStore | None = None) -> int:
     if store is None:
         store = SqliteStore(os.environ.get("INDEX_PATH", "data/index.sqlite"))
     failed = 0
+    no_embeddings = 0
+    scanned_skipped = 0
     try:
         for f in files:
             try:
-                r = ingest_file(f, store)
+                r = ingest_file(f, store, force=args.force)
             except Exception as exc:  # noqa: BLE001 - one bad PDF must not stop the run
                 failed += 1
                 print(f"failed {f.name}: {exc}")
                 continue
+            no_embeddings += r.embedding_failed
+            scanned_skipped += r.scanned_pages_skipped
             verb = "skipped" if r.skipped else "ingested"
             print(f"{verb} {f.name}  pages={r.pages} chunks={r.chunks}")
 
@@ -51,6 +58,11 @@ def main(argv: list[str] | None = None, store: IndexStore | None = None) -> int:
             print(f"superseded: {titles.get(old, old)} -> {titles.get(new, new)}")
         docs, chunks = store.count()
         print(f"documents: {docs}, chunks: {chunks}")
+        if no_embeddings or scanned_skipped:
+            print(
+                f"warnings: {no_embeddings} files with no embeddings, "
+                f"{scanned_skipped} scanned pages skipped"
+            )
     finally:
         if own_store and isinstance(store, SqliteStore):
             store.close()

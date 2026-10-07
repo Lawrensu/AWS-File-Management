@@ -141,3 +141,16 @@ def test_empty_text_makes_no_call(monkeypatch: pytest.MonkeyPatch) -> None:
     fake = _install(monkeypatch, [])
     assert tag_document(FILENAME, "   \n ") == tagger.fallback(FILENAME)
     assert fake.calls == []
+
+
+def test_embed_fake_returns_fallback_without_client(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("EMBED_FAKE", "1")
+    created: list[int] = []
+
+    def must_not_be_called() -> None:
+        created.append(1)  # tag_document swallows exceptions, so record the call instead
+        raise AssertionError("client must not be created in fake mode")
+
+    monkeypatch.setattr(tagger, "_client", must_not_be_called)
+    assert tag_document(FILENAME, TEXT) == tagger.fallback(FILENAME)
+    assert created == []
