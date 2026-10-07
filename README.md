@@ -25,7 +25,7 @@ Search results with tags and the Superseded badge:
 
 ![Search results with tags and the Superseded badge](docs/screenshots/search.png)
 
-A cited answer in Malay from an English document:
+For ask screenshot document:
 
 ![A cited answer in Malay from an English document](docs/screenshots/ask.png)
 
