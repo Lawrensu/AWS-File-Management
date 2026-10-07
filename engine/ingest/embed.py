@@ -2,7 +2,9 @@
 
 Default model is Cohere Embed Multilingual v3 (cohere.embed-multilingual-v3, 1024 dims, on
 demand in ap-southeast-1). A model ID starting with "amazon.titan" switches to the Titan v2
-request shape, so going back is a config change. Cohere truncates input past 512 tokens.
+request shape, so going back is a config change. Cohere rejects a text longer than 2048
+characters, so each text is trimmed to its first 2048 characters before it is sent. The text
+stored with the chunk is unchanged, and BM25 still covers all of it.
 
 EMBED_FAKE=1 returns deterministic hash-seeded vectors and never touches AWS or the cache.
 """
@@ -21,6 +23,7 @@ import numpy as np
 
 DIM = 1024
 DEFAULT_MODEL = "cohere.embed-multilingual-v3"
+COHERE_MAX_CHARS = 2048  # Bedrock rejects a Cohere text longer than this
 BATCH_SIZE = 96  # Cohere accepts up to 96 texts per request
 _COHERE_INPUT_TYPES = {"document": "search_document", "query": "search_query"}
 
@@ -102,7 +105,11 @@ def _invoke_cohere(client: Any, model: str, input_type: str, texts: list[str]) -
         contentType="application/json",
         accept="application/json",
         body=json.dumps(
-            {"texts": texts, "input_type": _COHERE_INPUT_TYPES[input_type], "truncate": "END"}
+            {
+                "texts": [t[:COHERE_MAX_CHARS] for t in texts],
+                "input_type": _COHERE_INPUT_TYPES[input_type],
+                "truncate": "END",
+            }
         ),
     )
     rows = json.loads(resp["body"].read())["embeddings"]

@@ -81,6 +81,23 @@ def test_cohere_request_body_query(fake: FakeBedrock) -> None:
     }
 
 
+def test_cohere_input_trimmed_to_2048_characters(fake: FakeBedrock) -> None:
+    long = "a" * 2048 + "TAIL"
+    exact = "b" * 2048
+    embed_texts([long, exact, "short"])
+    sent = _bodies(fake)[0]["texts"]
+    assert sent == ["a" * 2048, exact, "short"]
+    # Cached under the full text, so a repeat call makes no request.
+    embed_texts([long])
+    assert len(fake.calls) == 1
+
+
+def test_titan_input_not_trimmed(titan: FakeBedrock) -> None:
+    long = "a" * 3000
+    embed_texts([long])
+    assert json.loads(titan.calls[0]["body"])["inputText"] == long
+
+
 def test_invalid_input_type_rejected(fake: FakeBedrock) -> None:
     with pytest.raises(ValueError):
         embed_texts(["x"], input_type="passage")

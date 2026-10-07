@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import json
-from types import SimpleNamespace
 
 import pytest
 
 from engine.ingest import tagger
 from engine.ingest.tagger import RETRY_PREFIX, tag_document
+from engine.llm import LLMResult, LLMUnavailable
 
 FILENAME = "02-pekeliling-elaun-perjalanan-2024.pdf"
 TEXT = "PEKELILING KEWANGAN BIL. 3/2024\nPekeliling ini menggantikan Pekeliling Bil. 2/2022."
@@ -23,27 +23,29 @@ VALID = {
 }
 
 
-class FakeMessages:
+class FakeComplete:
+    """Stands in for engine.llm.complete: records each call, replays the scripted replies."""
+
     def __init__(self, replies: list[str | Exception]) -> None:
         self.replies = list(replies)
         self.calls: list[dict] = []
 
-    def create(self, **kw: object) -> SimpleNamespace:
-        self.calls.append(kw)
+    def __call__(self, system: str, user: str, **kw: object) -> LLMResult:
+        self.calls.append({"system": system, "user": user, **kw})
         reply = self.replies.pop(0)
         if isinstance(reply, Exception):
             raise reply
-        return SimpleNamespace(content=[SimpleNamespace(type="text", text=reply)])
+        return LLMResult(reply, "groq", "stub-model")
 
 
-def _install(monkeypatch: pytest.MonkeyPatch, replies: list[str | Exception]) -> FakeMessages:
-    messages = FakeMessages(replies)
-    monkeypatch.setattr(tagger, "_client", lambda: SimpleNamespace(messages=messages))
-    return messages
+def _install(monkeypatch: pytest.MonkeyPatch, replies: list[str | Exception]) -> FakeComplete:
+    fake = FakeComplete(replies)
+    monkeypatch.setattr(tagger, "complete", fake)
+    return fake
 
 
 def _user(call: dict) -> str:
-    return call["messages"][0]["content"]
+    return call["user"]
 
 
 def test_valid_json_parsed(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -89,12 +91,24 @@ def test_fallback_values() -> None:
     assert fb["title"] == FILENAME
 
 
-def test_client_error_falls_back(monkeypatch: pytest.MonkeyPatch) -> None:
-    def no_creds() -> None:
-        raise RuntimeError("no credentials")
-
-    monkeypatch.setattr(tagger, "_client", no_creds)
+def test_no_llm_available_falls_back(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _install(monkeypatch, [LLMUnavailable("Bedrock down, no Groq key")])
     assert tag_document(FILENAME, TEXT) == tagger.fallback(FILENAME)
+    assert len(fake.calls) == 1
+
+
+def test_json_validate_failed_retried_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    bad = LLMUnavailable("groq m failed with BadRequestError: 400 json_validate_failed")
+    fake = _install(monkeypatch, [bad, json.dumps(VALID)])
+    assert tag_document(FILENAME, TEXT) == VALID
+    assert len(fake.calls) == 2
+
+
+def test_json_validate_failed_twice_falls_back(monkeypatch: pytest.MonkeyPatch) -> None:
+    bad = LLMUnavailable("groq m failed with BadRequestError: 400 json_validate_failed")
+    fake = _install(monkeypatch, [bad, bad])
+    assert tag_document(FILENAME, TEXT) == tagger.fallback(FILENAME)
+    assert len(fake.calls) == 2
 
 
 def test_api_error_falls_back(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -143,14 +157,26 @@ def test_empty_text_makes_no_call(monkeypatch: pytest.MonkeyPatch) -> None:
     assert fake.calls == []
 
 
-def test_embed_fake_returns_fallback_without_client(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_call_asks_for_the_tag_role_with_the_schema(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _install(monkeypatch, [json.dumps(VALID)])
+    tag_document(FILENAME, TEXT)
+    call = fake.calls[0]
+    assert call["role"] == "tag"
+    assert call["max_tokens"] == 1024
+    assert list(call["json_schema"]["properties"]) == list(VALID)
+    assert call["json_schema"]["required"] == list(VALID)
+
+
+def test_embed_fake_still_tags_through_llm(monkeypatch: pytest.MonkeyPatch) -> None:
+    # llm.complete decides what EMBED_FAKE means (skip Bedrock, use Groq if keyed).
     monkeypatch.setenv("EMBED_FAKE", "1")
-    created: list[int] = []
+    fake = _install(monkeypatch, [json.dumps(VALID)])
+    assert tag_document(FILENAME, TEXT) == VALID
+    assert len(fake.calls) == 1
 
-    def must_not_be_called() -> None:
-        created.append(1)  # tag_document swallows exceptions, so record the call instead
-        raise AssertionError("client must not be created in fake mode")
 
-    monkeypatch.setattr(tagger, "_client", must_not_be_called)
+def test_embed_fake_without_any_provider_falls_back(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The real engine.llm.complete: fake mode skips Bedrock, an empty key skips Groq.
+    monkeypatch.setenv("EMBED_FAKE", "1")
+    monkeypatch.setenv("GROQ_API_KEY", "")
     assert tag_document(FILENAME, TEXT) == tagger.fallback(FILENAME)
-    assert created == []

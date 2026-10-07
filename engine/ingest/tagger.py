@@ -1,6 +1,7 @@
-"""A4. Tag a document with Claude Haiku on Bedrock. Never raises; falls back instead.
+"""A4. Tag a document through engine.llm (role "tag"). Never raises; falls back instead.
 
-The prompt lives in engine/ingest/prompts/tagger.md and is read from there at first use.
+The prompt and the JSON schema live in engine/ingest/prompts/tagger.md and are read from there
+at first use. Which model answers, Bedrock Haiku or Groq, is engine.llm's decision.
 """
 
 from __future__ import annotations
@@ -8,16 +9,17 @@ from __future__ import annotations
 import functools
 import json
 import logging
-import os
 import re
 from pathlib import Path
 from typing import Any
+
+from engine.llm import LLMUnavailable, complete
 
 log = logging.getLogger(__name__)
 
 PROMPT_PATH = Path(__file__).with_name("prompts") / "tagger.md"
 TAXONOMY_PATH = Path(__file__).resolve().parents[2] / "contracts" / "taxonomy.json"
-DEFAULT_MODEL = "anthropic.claude-haiku-4-5"
+MAX_OUTPUT_TOKENS = 1024
 MAX_INPUT_CHARS = 6000
 MAX_TOPICS = 3
 RETRY_PREFIX = "Your previous output was not valid JSON. Output only the JSON object."
@@ -43,11 +45,9 @@ def fallback(filename: str) -> dict[str, Any]:
 def tag_document(filename: str, text: str) -> dict[str, Any]:
     """Return title, doc_type, department, topics, year, lang, supersedes, summary.
 
-    One model call per document, two if the first reply is not valid JSON.
-    EMBED_FAKE=1 returns the fallback tags at once, with no network call.
+    One model call per document, two if the first reply is not valid JSON. If no provider is
+    available (engine.llm raises LLMUnavailable) the fallback tags are returned.
     """
-    if os.environ.get("EMBED_FAKE") == "1":
-        return fallback(filename)
     try:
         if not text.strip():
             return fallback(filename)
@@ -57,35 +57,38 @@ def tag_document(filename: str, text: str) -> dict[str, Any]:
             .replace("{{filename}}", filename)
             .replace("{{text}}", text[:MAX_INPUT_CHARS])
         )
-        client = _client()
-        model = os.environ.get("BEDROCK_TAG_MODEL", DEFAULT_MODEL)
-        parsed = _parse(_call(client, model, system, user))
+        parsed = _parse(_call(system, user))
         if parsed is None:
             log.warning("tagger: invalid JSON for %s, retrying once", filename)
-            parsed = _parse(_call(client, model, system, f"{RETRY_PREFIX}\n\n{user}"))
+            parsed = _parse(_call(system, f"{RETRY_PREFIX}\n\n{user}"))
         if parsed is None:
             log.warning("tagger: invalid JSON twice for %s, using fallback tags", filename)
             return fallback(filename)
         return _validate(parsed, filename)
+    except LLMUnavailable as exc:
+        log.warning("tagger: no LLM available for %s (%s), using fallback tags", filename, exc)
+        return fallback(filename)
     except Exception as exc:  # noqa: BLE001 - tagging must never fail ingest
         log.warning("tagger: %s for %s, using fallback tags", exc, filename)
         return fallback(filename)
 
 
-def _client() -> Any:
-    from anthropic import AnthropicBedrockMantle
+def _call(system: str, user: str) -> str:
+    """One model call. Groq's JSON mode can reject its own output (json_validate_failed, HTTP
+    400); that is worth one more try before giving up on the document."""
 
-    return AnthropicBedrockMantle(aws_region=os.environ.get("AWS_REGION", "ap-southeast-1"))
+    def once() -> str:
+        return complete(
+            system, user, role="tag", max_tokens=MAX_OUTPUT_TOKENS, json_schema=_schema()
+        ).text
 
-
-def _call(client: Any, model: str, system: str, user: str) -> str:
-    resp = client.messages.create(
-        model=model,
-        max_tokens=1024,
-        system=system,
-        messages=[{"role": "user", "content": user}],
-    )
-    return "".join(b.text for b in resp.content if getattr(b, "type", None) == "text")
+    try:
+        return once()
+    except LLMUnavailable as exc:
+        if "json_validate_failed" not in str(exc):
+            raise
+        log.warning("tagger: provider rejected its own JSON, retrying once")
+        return once()
 
 
 @functools.cache
@@ -93,6 +96,13 @@ def _prompts() -> tuple[str, str]:
     """(system, user template): the first fenced block under ## System and under ## User."""
     md = PROMPT_PATH.read_text(encoding="utf-8")
     return _first_block(md, "## System"), _first_block(md, "## User")
+
+
+@functools.cache
+def _schema() -> dict[str, Any]:
+    """The JSON schema block under ## JSON schema for structured output."""
+    md = PROMPT_PATH.read_text(encoding="utf-8")
+    return json.loads(_first_block(md, "## JSON schema for structured output"))
 
 
 def _first_block(md: str, header: str) -> str:
