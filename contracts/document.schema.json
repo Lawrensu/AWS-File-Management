@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "document.schema.json",
+  "title": "Document",
+  "type": "object",
+  "required": ["doc_id", "title", "filename", "doc_type", "department", "lang", "status", "page_count"],
+  "additionalProperties": false,
+  "properties": {
+    "doc_id": { "type": "string", "pattern": "^[0-9a-f]{16}$" },
+    "title": { "type": "string", "description": "Extracted by the tagger from the first page, falls back to filename." },
+    "filename": { "type": "string" },
+    "source_path": { "type": "string", "description": "Local path or s3://bucket/key." },
+    "doc_type": { "type": "string", "description": "One of taxonomy.doc_type." },
+    "department": { "type": "string", "description": "One of taxonomy.department." },
+    "topics": { "type": "array", "items": { "type": "string" }, "description": "Subset of taxonomy.topic." },
+    "year": { "type": ["integer", "null"] },
+    "lang": { "type": "string", "enum": ["ms", "en", "mixed"] },
+    "status": { "type": "string", "enum": ["current", "superseded", "draft"] },
+    "supersedes": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Titles or reference numbers this document says it replaces, as written in the document. Resolved to doc_ids by B3."
+    },
+    "superseded_by": { "type": ["string", "null"], "description": "doc_id of the newer document, set by B3." },
+    "keywords": { "type": "array", "items": { "type": "string" }, "description": "YAKE top 10." },
+    "page_count": { "type": "integer", "minimum": 1 },
+    "has_scanned_pages": { "type": "boolean", "default": false },
+    "ingested_at": { "type": "string", "format": "date-time" }
+  }
+}

@@ -1,0 +1,7 @@
+[
+  {
+    "question": "Berapakah kadar elaun perjalanan untuk kontraktor?",
+    "expected_doc_title_contains": "REPLACE after seed corpus exists",
+    "note": "bilingual: Malay question, answer may be in an English doc"
+  }
+]

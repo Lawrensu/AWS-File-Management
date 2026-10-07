@@ -1,0 +1,38 @@
+{
+  "doc_type": [
+    "circular",
+    "policy",
+    "sop",
+    "guideline",
+    "report",
+    "meeting_minutes",
+    "form",
+    "letter",
+    "other"
+  ],
+  "department": [
+    "Jabatan Sumber Manusia",
+    "Jabatan Kewangan",
+    "Jabatan Perolehan",
+    "Jabatan Teknologi Maklumat",
+    "Jabatan Pentadbiran",
+    "Jabatan Perancangan",
+    "Jabatan Undang-Undang",
+    "Umum"
+  ],
+  "topic": [
+    "elaun_dan_tuntutan",
+    "cuti",
+    "perolehan",
+    "keselamatan_siber",
+    "pengurusan_rekod",
+    "prosedur_kelulusan",
+    "latihan",
+    "disiplin",
+    "bajet",
+    "mesyuarat",
+    "lain"
+  ],
+  "status": ["current", "superseded", "draft"],
+  "lang": ["ms", "en", "mixed"]
+}
