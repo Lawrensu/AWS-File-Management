@@ -1,6 +1,12 @@
-# System design
+# System Design for Rujuk
 
-This doc explains why Rujuk exists and how it works. Read it if you are a judge or a new teammate.
+This document describes the purpose, architecture and key decisions of Rujuk, document search and Q&A for government agencies.
+
+Rujuk consists of:
+- Backend: `engine/` (ingest and index) and `api/` (FastAPI), see [Backend Architecture](backend/BACKEND-ARCHITECTURE.md)
+- Frontend: `web/` (Next.js client), see [Frontend Architecture](frontend/FRONTEND-ARCHITECTURE.md)
+
+---
 
 ## Problem
 
@@ -8,133 +14,145 @@ This doc explains why Rujuk exists and how it works. Read it if you are a judge 
 - Finding the right one is slow.
 - The brief: turn that pile into a searchable, intelligent resource.
 - Staff should find answers faster and decide better.
+- Real documents are Malay and English, often mixed, and some are scans.
 - Sponsor is SDEC, Sarawak.
-- Real documents are Malay and English, often mixed.
 
-## What we score on
+## Tool Stack
 
-- Find faster.
-  - Search understands meaning and works on scanned PDFs.
-  - Demo: ask in plain language and get the right document and page in under 3 seconds.
-- Decide better.
-  - Answers, not links, with citations the user can verify.
-  - Demo: "Can a contractor claim travel allowance?" returns a 3-line answer.
-  - The answer cites the circular and page. The page opens with the passage highlighted.
-- Context.
-  - Bilingual retrieval makes a judge believe it would work in their office.
+- Backend
+	- Python 3.11+ with `uv`: one language for engine and API, fast installs
+	- FastAPI (>=0.115) and pydantic v2 (>=2.8): typed routes and boundary models
+	- PyMuPDF (>=1.24): one library for text, bboxes and page rendering
+	- rank-bm25 and numpy: keyword and vector ranking in memory
+	- SQLite: in-process storage, no server to set up
+	- YAKE: keyword extraction without a model call
+	- langdetect: language tag per chunk and per query
+	- rapidfuzz: fuzzy title match for supersession
+- AI
+	- Amazon Bedrock, Titan Text Embeddings v2: embeddings, cross-language matching
+	- Amazon Bedrock, Claude Haiku: tags and supersession, cheapest capable model
+	- Amazon Bedrock, Claude Sonnet: cited answers
+	- Groq free tier: fallback for tags and answers, `llama-3.1-8b-instant` and `llama-3.3-70b-versatile`
+	- Amazon Textract: OCR for scanned pages, stretch goal
+- Frontend
+	- Next.js 16.4.0 app router: routes and server rendering
+	- React 19.3.0: UI
+	- Tailwind 4: styling
+	- pnpm: package manager
 
-## Architecture
+## Repository Structure
 
-- Three pieces: the document store, the knowledge engine, and a thin web client.
-- The document store stands in for the agency file share. Today it is a local folder. S3 is the production target.
-- Pitch line: point it at your existing file share, no migration.
-- The knowledge engine is the ingest pipeline plus the index.
-- The sections below cover ingest, index and search, query and answer, and the client.
+```
+contracts/   JSON schemas, taxonomy and API contract, source of truth for shared shapes
+engine/
+  ingest/    file to chunks with text, page, bbox, keywords, tags, embedding
+  index/     IndexStore, SqliteStore, hybrid search, supersession
+api/         FastAPI routes: /search, /ask, /documents
+web/         Next.js client
+samples/     synthetic seed corpus
+eval/        retrieval questions and recall runner
+scripts/     helper scripts, such as markdown to PDF
+docs/        design, plan, demo and agent prompts
+```
 
-## Ingest flow
+## System Functionality
 
-- Runs once per document. Code in `engine/ingest/`.
-- Extract text and blocks with PyMuPDF.
-- Send scanned pages to Textract. This is a stretch goal.
-- Chunk by page at 800 words with 100 overlap.
-- Extract keywords with YAKE.
-- Detect language with langdetect.
-- Tag with Claude Haiku from a closed taxonomy. The same call finds what the document supersedes.
-- If Bedrock fails, tagging falls back to Groq, then to default tags. Ingest never fails on a tag.
-- Embed with Titan v2.
-- Write to the index.
-- Resolve supersession once after the whole folder is ingested.
-- Ingest is idempotent on `doc_id`.
+- Staff
+	- Search documents in Malay or English
+		- Result cards with tags and a red Superseded badge
+	- Ask a question and get a cited answer (planned)
+		- Answer in the question's language
+		- Every claim carries a `[n]` citation
+		- Says not found when the documents do not answer
+	- Open the cited page with the passage highlighted (planned)
+	- Switch department view
+		- Results keep that department plus `Umum`
+		- Selection is sent on every request
+- Document owner or admin
+	- Upload a PDF (planned)
+	- Run ingest on a folder (planned)
+- System
+	- Tag each document from a closed taxonomy (planned)
+	- Detect language per chunk (planned)
+	- Extract keywords (planned)
+	- Detect supersession between documents
+	- Demote superseded documents in ranking
+	- OCR scanned pages with Textract (planned, stretch)
 
-## Index and search
+Notes:
+- Real access control is not built. The department selector is Cognito-ready only.
 
-- Code in `engine/index/`. All access goes through the `IndexStore` interface.
-- `SqliteStore` persists to SQLite. BM25 and a numpy vector matrix live in memory.
-- BM25 weights rare terms higher, which gives the algorithmic common and rare word indexing.
-- It uses the Lucene idf so a one-PDF index still gets keyword hits.
-- Dense embeddings add cross-language matching.
-- `hybrid_search` runs both rankings and fuses them with Reciprocal Rank Fusion.
-- RRF uses k of 60 and a candidate pool of 200 per list.
-- A department filter keeps that department or `Umum`.
-- Superseded chunks are demoted by rank, not by score.
-- `query_vec=None` means BM25 only.
-- pgvector or OpenSearch can replace `SqliteStore` later without API changes.
+## Application Layers
 
-## Query and answer flow
+Cross sectional view of the application:
 
-- Code in `api/`.
-- Embed the question. If that fails, fall back to BM25 only.
-- Run hybrid search with the viewer's department filter.
-- `/search` returns result cards.
-- `/ask` sends the top 8 chunks to Claude Sonnet on Bedrock.
-- If Bedrock fails, `/ask` falls back to Groq with the top 5 chunks, to fit the free tier's token limit.
-- The prompt says: answer in the question's language, cite every claim, say not found otherwise.
-- The answer streams over SSE. `[n]` markers map to citations.
-- Page images are rendered server side with the cited passage highlighted.
+1. `web/` sends requests to the API with the viewer's department.
+2. `api/` routes embed the question, call the index and shape the response.
+3. `engine/index/` runs hybrid search behind the `IndexStore` interface.
+4. `SqliteStore` holds documents and chunks in SQLite, with BM25 and vectors in memory.
+5. `engine/ingest/` fills the store from PDFs.
+6. AWS and Groq: Bedrock for embeddings, tags and answers, Textract for scans, Groq as the model fallback.
 
-## Client
+## Flow
 
-- Code in `web/`. Next.js with React 19 and Tailwind 4.
-- Search page with result cards, tags and a red Superseded badge.
-- Ask page with a streamed answer and citation chips.
-- Page viewer showing a server-rendered PNG with the passage highlighted.
-- Department selector in the header. It is stored in localStorage and sent on every request.
-- The client can run on mock JSON before the API exists.
+### Ingest
 
-## Data shapes
+1. Run `uv run python -m engine.ingest samples/` on a folder.
+2. Extract text and blocks per page with PyMuPDF.
+3. Send scanned pages to Textract (stretch).
+4. Chunk by page, 800 words with 100 overlap.
+5. Extract keywords with YAKE and detect language with langdetect.
+6. Tag with Claude Haiku from the closed taxonomy. The same call lists what the document supersedes.
+7. If Bedrock fails, tag with Groq. If that fails, use default tags. Ingest never fails on a tag.
+8. Embed chunks with Titan v2. With `EMBED_FAKE=1`, chunks get no real vectors and search runs on BM25 only.
+9. Write the document and chunks to the store. Ingest is idempotent on `doc_id`.
+10. After the whole folder, run supersession once.
 
-- Source of truth is `contracts/`. Read `contracts/README.md` first.
-- `contracts/document.schema.json` is one document's metadata.
-- `contracts/chunk.schema.json` is one indexed chunk.
-- `contracts/taxonomy.json` holds the closed sets for doc_type, department, topic, status and lang.
-- `contracts/api.md` lists every route with request and response.
-- Key document fields: `doc_id`, `title`, `doc_type`, `department`, `status`, `superseded_by`, `supersedes`, `source_path`.
-- Key chunk fields: `chunk_id`, `doc_id`, `page`, `bbox`, `heading`, `text`, `lang`, `source`, `embedding`.
-- `doc_id` is the first 16 hex of the sha256 of the file bytes.
-- `chunk_id` is `{doc_id}:{page}:{n}`, with n counting from 0 per page.
-- Pages are 1-indexed. Every chunk has a page number.
-- Languages are `ms`, `en` and `mixed`.
-- Bboxes are `[x0, y0, x1, y1]` in PDF points, origin top-left.
-- Errors are `{"error": "<message>"}`.
+### Query and Answer
 
-## Key decisions
+1. Staff send a question with their department.
+2. The API embeds the question. If that fails, it passes no vector and search runs on BM25 only.
+3. `hybrid_search` runs BM25 and vector rankings and fuses them with Reciprocal Rank Fusion.
+4. The department filter keeps that department or `Umum`.
+5. Superseded chunks are demoted by rank and still returned.
+6. `/search` returns result cards.
+7. `/ask` sends the top 8 chunks to Claude Sonnet on Bedrock.
+8. If Bedrock fails, `/ask` falls back to Groq with the top 5 chunks.
+9. The answer streams over SSE. `[n]` markers map to citations.
+10. The viewer opens the cited page as a PNG with the passage highlighted.
 
-- Four people, four hours. The order of work is in `docs/PLAN.md`.
-- In-process SQLite, not pgvector. It saves an hour of setup.
-- Python FastAPI, Next.js and PyMuPDF. One language per side, one PDF library.
-- Closed tag taxonomy. Tags stay consistent and can drive filters.
-- Tags run once per document on the cheapest capable model. Cost stays low.
-- BM25 plus vectors with RRF. Keywords catch exact terms and vectors catch cross-language matches.
-- Supersession is detected at ingest. The old document is badged and ranked lower.
-- Tags and embeddings are cached by content hash. Re-ingest costs nothing.
-- Answers are capped at 8 chunks. Cost and latency stay bounded.
-- No paid services. Bedrock runs on a $100 AWS credit with a $1 budget alert.
-- AWS credentials live on one machine only, Lawrence's. The integrated demo runs there.
-- Teammates develop with `EMBED_FAKE=1` and mocks, so they are never blocked on credentials.
-- Groq's free tier is the fallback for tagging and answers. It needs no credit card.
-- There is no embedding fallback. Without Bedrock, search runs on BM25 only.
-- One shared `engine/llm.py` will hold the Bedrock call and the Groq fallback. It is added after A4 and C3 are done.
-- Department scoping is in the UI as Cognito-ready. Real access control is roadmap.
-- Figures without text, such as flowcharts, are cut. They need a multimodal model.
+## Key Decisions
+
+- Four people, four hours. The order of work is in [PLAN](PLAN.md).
+- In-process SQLite, not pgvector: saves an hour of setup. pgvector or OpenSearch can replace it behind `IndexStore`.
+- FastAPI, Next.js and PyMuPDF: one language per side, one PDF library.
+- Closed tag taxonomy: tags stay consistent and can drive filters.
+- Tags run once per document on the cheapest capable model: cost stays low.
+- BM25 plus vectors with RRF: keywords catch exact terms, vectors catch cross-language matches.
+- Supersession is detected at ingest: the old document is badged and ranked lower, not removed.
+- Tags and embeddings are cached by content hash: re-ingest costs nothing.
+- Answers are capped at 8 chunks: cost and latency stay bounded.
+- No paid services: Bedrock runs on a $100 AWS credit with a $1 budget alert.
+- AWS credentials live on Lawrence's machine only: the integrated demo runs there.
+- Teammates develop with `EMBED_FAKE=1` and mocks: nobody is blocked on credentials.
+- Groq free tier is the fallback for tags and answers: it needs no credit card.
+- No embedding fallback: without Bedrock, search runs on BM25 only.
+- One shared `engine/llm.py` will hold the Bedrock call and the Groq fallback, added after A4 and C3.
+- Department scoping is in the UI as Cognito-ready: real access control is roadmap.
+- Figures without text, such as flowcharts, are cut: they need a multimodal model.
 - The name Rujuk is Malay for to refer or to consult.
 
-## AWS services used
+---
 
-- Amazon Bedrock, Titan Text Embeddings v2, for embeddings.
-- Amazon Bedrock, Claude Haiku, for tags and supersession.
-- Amazon Bedrock, Claude Sonnet, for cited answers.
-- Amazon Textract for scanned pages. Stretch goal.
-- Amazon S3 as the document store. Optional for uploads through `S3_BUCKET`.
-- Model IDs and region are set in `.env`. See `.env.example`.
-
-## Non-AWS services used
-
-- Groq free tier as the fallback model provider for tagging and answers.
-- Llama 3.1 8B Instant for tags and Llama 3.3 70B Versatile for answers. Set in `.env`.
-
-## Roadmap
+# TODO (future)
 
 - Cognito access control.
 - OpenSearch at scale.
 - Figure description with a multimodal model.
 - Conflict detection between live documents.
+
+# Open Questions
+
+- Items marked "(planned)" wait on ingest and the API. Remove each marker as its task lands.
+- Uploads go to `data/uploads/`. Writing them to S3 through `S3_BUCKET` is optional and not built.
+- Contract and prompt mismatches found during review are listed in [Backend Architecture](backend/BACKEND-ARCHITECTURE.md), under Open Questions.

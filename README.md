@@ -21,6 +21,9 @@ Rujuk is document search and Q&A for government agencies, built for an AWS hacka
 
 - [docs/GETTING-STARTED.md](docs/GETTING-STARTED.md): read first to install, configure, run, and test.
 - [docs/SYSTEM-DESIGN.md](docs/SYSTEM-DESIGN.md): read to understand the problem, architecture, and key decisions.
+- [docs/backend/BACKEND-ARCHITECTURE.md](docs/backend/BACKEND-ARCHITECTURE.md): read before working on `engine/` or `api/`.
+- [docs/frontend/FRONTEND-ARCHITECTURE.md](docs/frontend/FRONTEND-ARCHITECTURE.md): read before working on `web/`.
+- [docs/DEMO.md](docs/DEMO.md): read before presenting or recording the demo.
 - [docs/PLAN.md](docs/PLAN.md): read to see who owns which task and the order of work.
 - [docs/AGENT-PROMPTS.md](docs/AGENT-PROMPTS.md): read when you hand a task to a coding agent.
 - [contracts/README.md](contracts/README.md): read before touching any shared data shape or API route.

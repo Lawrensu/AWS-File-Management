@@ -22,7 +22,7 @@ Rules for every coding agent and every human on this repo. `CLAUDE.md` and
 - `api/` C. FastAPI with `/search`, `/ask`, `/documents`.
 - `web/` D. Next.js client.
 - `samples/` synthetic seed corpus. `eval/` retrieval questions and runner.
-- `docs/` system design, getting started, plan, agent prompts, demo script.
+- `docs/` system design, getting started, plan, agent prompts, demo script. `docs/backend/` and `docs/frontend/` hold the detailed architecture docs.
 
 ## Rules
 
@@ -76,11 +76,11 @@ uv run pytest
 
 ## Docs convention
 
-- Applies to `README.md`, `AGENTS.md`, and every file in `docs/`.
-- Point form. No markdown tables.
-- One H1 as the title, then H2 sections only. No H3 or deeper.
-- First line under the title: one sentence on what the doc is for and who should read it.
-- Short sentences. One idea per bullet.
-- No em dashes. No parentheses.
-- Commands and paths go in backticks. Multi-line commands go in fenced bash blocks.
+- Applies to `README.md`, `AGENTS.md`, and everything in `docs/`.
+- Top-level docs are short and link out. Detail goes in `docs/backend/` and `docs/frontend/`.
+- The title is an H1, followed by one purpose sentence and, for long docs, a bullet list of what the doc covers and links to related docs.
+- Long docs split into parts with a line containing only `---`. Each part is an H1: Overview, Implementation Details, TODO (future), Open Questions. Use H2 and H3 inside parts.
+- Point form. Numbered lists only for ordered steps.
+- No markdown tables. No em dashes.
+- Directory trees and routes go in code blocks. Commands go in fenced bash blocks. Paths go in backticks.
 - File names in `docs/` are UPPER-KEBAB.md.
