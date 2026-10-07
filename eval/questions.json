@@ -1,7 +1,52 @@
 [
   {
-    "question": "Berapakah kadar elaun perjalanan untuk kontraktor?",
-    "expected_filename": "REPLACE with a filename from samples/MANIFEST.md",
-    "note": "bilingual: Malay question, answer may be in an English doc"
+    "question": "Berapakah had pembelian terus untuk perolehan?",
+    "expected_filename": "04-circular-procurement-quotation-2023.pdf",
+    "note": "demo Q1; cross-language: Malay question, English doc"
+  },
+  {
+    "question": "kadar tuntutan perbatuan kereta",
+    "expected_filename": "02-pekeliling-elaun-perjalanan-2024.pdf",
+    "note": "demo Q3 search; must rank the 2024 circular above the superseded 2022 one"
+  },
+  {
+    "question": "Siapakah yang memberi kelulusan muktamad bagi perolehan antara RM200,000 hingga RM500,000?",
+    "expected_filename": "06-sop-kelulusan-perolehan.pdf",
+    "note": "cross-language: Malay question, English doc"
+  },
+  {
+    "question": "Berapakah had nilai hadiah yang boleh diterima oleh pegawai?",
+    "expected_filename": "15-policy-gifts-and-hospitality-2024.pdf",
+    "note": "cross-language: Malay question, English doc"
+  },
+  {
+    "question": "Dalam tempoh berapa jam insiden keselamatan siber tahap 3 mesti dilaporkan?",
+    "expected_filename": "07-sop-insiden-keselamatan-siber.pdf",
+    "note": "same language"
+  },
+  {
+    "question": "How many days of annual leave do staff get after 10 years of service?",
+    "expected_filename": "13-guideline-leave-application-2024.pdf",
+    "note": "demo Q2; same language"
+  },
+  {
+    "question": "What is the current car mileage claim rate?",
+    "expected_filename": "02-pekeliling-elaun-perjalanan-2024.pdf",
+    "note": "demo Q3 ask; cross-language: English question, Malay doc"
+  },
+  {
+    "question": "How often must passwords be changed?",
+    "expected_filename": "12-garis-panduan-kata-laluan-2023.pdf",
+    "note": "cross-language: English question, Malay doc"
+  },
+  {
+    "question": "How much extra funding did the committee approve for Portal Digital Rakyat?",
+    "expected_filename": "10-minit-mesyuarat-bajet-2024.pdf",
+    "note": "cross-language: English question, Malay doc"
+  },
+  {
+    "question": "How many working days before travel must a department vehicle be booked?",
+    "expected_filename": "08-sop-tempahan-kenderaan-jabatan.pdf",
+    "note": "mixed-language doc"
   }
 ]
