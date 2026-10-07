@@ -1,26 +1,23 @@
 # Rujuk
 
-Intelligent document search and Q&A for government agencies. AWS hackathon, 4-hour build.
+Document search and Q&A for government agencies. AWS hackathon, 4-hour build.
 
-## Start here (10 minutes)
+## Start here
 
-1. **Get the code**
+1. Get the code and your branch.
 
    ```bash
    git fetch origin
-   git checkout -b <yourname>/dev origin/dev-law
+   git checkout dev-<yourname>
+   git merge origin/dev-law
    ```
 
-2. **Find your name and your tasks.** Open `docs/PLAN.md`. Each workstream has a name on
-   it: A Malissa, B Noah, C Cyndia, D Lawrence. Your table lists your tasks in order,
-   with a mode, a time target, and a "done when" column. That column is the definition of
-   finished; nothing else is.
+2. Open `docs/PLAN.md`. Find your name. "Who blocks whom" tells you what to push first.
+   "Order of work" tells you what to do at each clock mark.
 
-3. **Read the two short files everyone must know.** `AGENTS.md` (rules, layout, stack,
-   commands) and `contracts/README.md` (the data shapes that cross between workstreams).
-   Then skim only the contract files your tasks mention.
+3. Read `AGENTS.md`. Then only the files in `contracts/` your tasks mention.
 
-4. **Set up the machine.**
+4. Set up.
 
    ```bash
    uv sync --extra dev
@@ -28,81 +25,35 @@ Intelligent document search and Q&A for government agencies. AWS hackathon, 4-ho
    aws sts get-caller-identity
    ```
 
-   Fill in `AWS_PROFILE` and `AWS_REGION` in `.env`. Then open the Bedrock console for that
-   region and check Model access for Titan Text Embeddings v2 and the Claude models named
-   in `.env`. If one is missing, say so in the group chat now, not at the 1:30 checkpoint.
+   Fill in `.env`. Check Bedrock model access in the console for the region. If a model is
+   missing, say so in the chat now. No credentials yet? `EMBED_FAKE=1` runs everything
+   without AWS.
 
-   Lawrence only: `cd web` happens after task D1 creates it, not before.
-
-5. **Kick off your agent.** Open your agent in the repo root (Claude Code: `claude`,
-   Kiro: open the folder, Cursor: open the folder). Paste this as the first message,
-   with your name filled in:
+5. Kick off your agent. Open it in the repo root and paste, with your name and letter:
 
    ```
    I am <name>, owner of workstream <letter> in docs/PLAN.md. Read AGENTS.md,
-   contracts/README.md, and my workstream table in docs/PLAN.md. Then tell me, in order:
-   (1) which of my tasks are [A] with no dependency, so I can start them now,
-   (2) which [H] task I should do myself first while those run,
-   (3) anything in the setup that is missing on this machine (run `uv sync --extra dev`
-   and `aws sts get-caller-identity` to check).
-   Do not write any code yet.
+   contracts/README.md, and my section of docs/PLAN.md. Tell me which of my tasks are [A]
+   and can start now, which [H] task I do first, and whether `uv sync --extra dev` and
+   `aws sts get-caller-identity` pass on this machine. Do not write code yet.
    ```
 
-   The agent answers with your starting lineup. Then, for each [A] task it named, open a
-   fresh agent session and paste that task's block from `docs/AGENT-PROMPTS.md`. One task
-   per session so the agents do not step on each other. Keep your main session for your
-   [H] task.
+   For each [A] task it names, open a fresh agent session and paste that task's block from
+   `docs/AGENT-PROMPTS.md`. One task per session. Keep your main session for your [H] task.
 
-6. **Work the tasks.** Look at the `Mode` column.
-   - **[A]**: open `docs/AGENT-PROMPTS.md`, find the block with your task ID, paste it into
-     your agent (Claude Code, Kiro, Cursor, DeepSeek, any of them). The agent reads
-     `AGENTS.md` and the contracts itself. Review the diff, run the test command, commit.
-   - **[H]**: do it yourself. If it names a prompt file (A4, C3), that file has the full
-     prompt text, the output schema, and the test questions.
+6. Commit small, push often, merge to `dev-law` when a task is done. If your task is one of
+   the three gates in the plan, push the moment it works and say so in the chat.
 
-   Run your [A] tasks that have no dependency all at once, then do your [H] task while
-   the agents work. The dependency graph is in `docs/PLAN.md` under "Dependencies".
+## Rules that bite
 
-7. **Commit small, push often.**
-
-   ```bash
-   git add -A && git commit -m "<area>: <what>" && git push -u origin <yourname>/dev
-   ```
-
-   Open a PR to `dev-law` when a task is done. One reviewer, merge fast.
-
-## The only rules that will bite you
-
-- Do not edit another workstream's package. Stub what you need with `TODO(<letter>)`.
-- Every chunk must have a page number.
-- Change a file in `contracts/` only after telling the group.
-- `.env` never gets committed.
+- Do not edit another workstream's package. Stub it with `TODO(<letter>)`.
+- Every chunk has a page number.
+- Tell the group before changing anything in `contracts/`.
+- Blocked more than 10 minutes? Say so in the chat.
 
 ## Checkpoints
 
-| Clock | Must be true |
-|---|---|
-| 1:30 | One PDF in, one cited answer out, shown in the UI |
-| 3:00 | Feature freeze |
-| 3:30 | Demo rehearsed twice, backup recording made |
-| 4:00 | Submitted |
-
-If you are blocked for more than 10 minutes, say so in the group chat. Protect the 1:30
-checkpoint over any feature.
-
-## Map
-
-```
-docs/BRAINSTORM.md       why we are building this and what we decided
-docs/PLAN.md             who does what, in what order, done-when per task
-docs/AGENT-PROMPTS.md    paste-ready prompts for every agent-delegable task
-docs/prompts/            seed corpus generation prompt
-AGENTS.md                rules for humans and agents, shared by every tool
-contracts/               data shapes and the API contract
-engine/ingest/           A: file -> chunks            (prompts/ has the tagger prompt)
-engine/index/            B: store and hybrid search
-api/                     C: FastAPI                   (prompts/ has the answer prompt)
-web/                     D: Next.js (created by task D1)
-samples/                 synthetic seed corpus
-eval/                    retrieval eval questions and runner
-```
+- 1:30 One PDF in, one cited answer out, shown in the UI. Protect this over any feature.
+- 3:00 Feature freeze.
+- 3:30 Demo rehearsed twice, backup recording made.
+- 4:00 Submitted.

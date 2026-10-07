@@ -9,7 +9,8 @@ Common preamble, included at the top of every prompt below:
 ```
 Read AGENTS.md, then contracts/README.md. Work only inside the package named below. Write
 the test first, make it pass, run the test command, and paste its output. Do not commit.
-Reply with the list of files changed and anything you had to assume.
+Tests that need a store use engine.testing.FakeStore, make_document, make_chunk; never
+SqliteStore. Reply with the list of files changed and anything you had to assume.
 ```
 
 ---
@@ -121,8 +122,8 @@ Test command: uv run pytest engine/ingest/test_keywords.py -q
 <preamble>
 
 Package: engine/index/. Create engine/index/hybrid.py and engine/index/test_hybrid.py.
-Depends on IndexStore in engine/index/store.py (exists). Test with a fake in-memory
-IndexStore subclass defined in the test, do not depend on SqliteStore.
+Depends only on IndexStore in engine/index/store.py (exists). Test with
+engine.testing.FakeStore.
 
 Implement:
 
@@ -132,24 +133,33 @@ Implement:
         doc_type: str | None = None
         include_superseded: bool = False
 
-    def rrf(rankings: list[list[tuple[str, float]]], k: int = 60) -> dict[str, float]
-        # score(id) = sum over rankings of 1 / (k + rank), rank starting at 1
+    SUPERSEDED_RANK_OFFSET = 5
 
-    def hybrid_search(store: IndexStore, query: str, query_vec: np.ndarray,
+    def rrf(rankings: list[list[str]], k: int = 60,
+            demoted: set[str] = frozenset()) -> dict[str, float]
+        # score(id) = sum over rankings of 1 / (k + rank + offset), rank starting at 1,
+        # offset = SUPERSEDED_RANK_OFFSET if id in demoted else 0
+
+    def hybrid_search(store: IndexStore, query: str, query_vec: np.ndarray | None,
                       filters: Filters, top_k: int = 10) -> list[dict]
 
-hybrid_search: call store.bm25_search(query, top_k * 3) and store.vector_search(query_vec,
-top_k * 3), fuse with rrf, then for each chunk_id load the chunk and its document, apply
-filters (department filter: skip unless filters.department is None or "Umum" or equals
-doc["department"]; doc_type filter likewise), multiply score by 0.3 when doc["status"] ==
-"superseded" and not include_superseded, sort by score desc, take top_k. Return dicts with
-keys matching the SearchResult in contracts/api.md: chunk_id, doc_id, title, page, snippet,
-score, doc_type, department, status, superseded_by, lang. snippet = first 300 chars of chunk
-text.
+hybrid_search:
+- Candidate pool: n = 200, or store.count()[1] (every chunk) when any filter field is set.
+- Call store.bm25_search(query, n). If query_vec is not None also call
+  store.vector_search(query_vec, n); with None, BM25 only.
+- Load each candidate's chunk and document once. Drop candidates whose document fails a
+  filter. Department filter: keep when filters.department is None or "Umum", or when
+  doc["department"] equals it or equals "Umum". doc_type filter: keep when None or equal.
+- demoted = chunk ids whose doc["status"] == "superseded", empty when include_superseded.
+- Fuse with rrf, sort desc, take top_k. Return dicts matching SearchResult in
+  contracts/api.md: chunk_id, doc_id, title, page, snippet, score, doc_type, department,
+  status, superseded_by, lang. snippet = first 300 chars of chunk text.
 
 Tests: rrf of [[a,b],[b,a]] gives a and b equal scores; rrf of [[a],[a]] > rrf of [[a],[b]]
-for a; department filter removes other departments; superseded doc ranks below a current doc
-with the same raw ranking; include_superseded=True restores it.
+for a; department filter removes other departments but keeps "Umum" docs; a superseded
+chunk ranked 1st in both lists with 28 other candidates stays inside top 10 and below the
+current chunk; include_superseded=True restores it to the top; query_vec=None returns
+results from BM25 alone.
 
 Test command: uv run pytest engine/index/test_hybrid.py -q
 ```
@@ -160,24 +170,28 @@ Test command: uv run pytest engine/index/test_hybrid.py -q
 <preamble>
 
 Package: engine/index/. Create engine/index/supersession.py and
-engine/index/test_supersession.py. Same fake-store approach as B2.
+engine/index/test_supersession.py. Test with engine.testing.FakeStore.
 
 Implement:
 
     def resolve_supersession(store: IndexStore) -> list[tuple[str, str]]
         # returns [(old_doc_id, new_doc_id)] pairs that were marked
 
-For every document with a non-empty "supersedes" list, for each reference string in it,
-find the best match among all other documents' titles using
-rapidfuzz.fuzz.partial_ratio(reference, title). If the best score is >= 80 and the match is
-not the document itself, set the matched document's status="superseded" and
-superseded_by=the newer doc_id, and call store.upsert_document on it. Never mark a document
-superseded by one with an earlier or equal year if both years are known. Return the pairs.
+For every document with a non-empty "supersedes" list, for each reference string in it:
+- Extract a reference number with the regex (\d+)\s*/\s*(\d{4}) (for example "2/2022").
+- Candidates are all other documents. If the reference has a number, keep only candidates
+  whose title or filename contains that same "number/year" (allow "2/2022" and "2-2022").
+  If the reference has no number, keep all candidates.
+- Score candidates with rapidfuzz.fuzz.partial_ratio(reference, title). Take the best. Accept
+  if score >= 80.
+- Year guard: skip when both years are known and the candidate year >= the newer doc year.
+- Set candidate status="superseded", superseded_by=newer doc_id, store.upsert_document.
+Idempotent: running twice gives the same state and the same pairs.
 
 Tests: doc A titled "Pekeliling Kewangan Bil. 2/2022" year 2022, doc B with
-supersedes=["Pekeliling Kewangan Bil. 2/2022"] year 2024 results in A superseded by B;
-a reference that matches nothing changes nothing; the year guard prevents a 2021 doc from
-superseding a 2023 doc.
+supersedes=["Pekeliling Kewangan Bil. 2/2022"] year 2024 gives A superseded by B; a
+reference to "Bil. 2/2022" when only "Pekeliling Kewangan Bil. 1/2023" is indexed marks
+nothing; the year guard stops a 2021 doc superseding a 2023 doc; running twice is stable.
 
 Test command: uv run pytest engine/index/test_supersession.py -q
 ```
@@ -189,14 +203,18 @@ Test command: uv run pytest engine/index/test_supersession.py -q
 
 Package: eval/. Create eval/run.py. Do not write tests for this one; it is a script.
 
-Read eval/questions.json, a list of {"question": str, "expected_doc_title_contains": str}.
-Open SqliteStore(os.environ.get("INDEX_PATH", "data/index.sqlite")). For each question,
-embed it with engine.ingest.embed.embed_texts (stub with TODO(A3) if absent), run
-engine.index.hybrid.hybrid_search with empty Filters and top_k=5, and count a hit when any
-result's title contains the expected substring, case-insensitive. Print one line per
-question with HIT or MISS and the top result title, then "recall@5 = X/N (P%)".
+Read eval/questions.json, a list of {"question": str, "expected_filename": str}. Open
+SqliteStore(os.environ.get("INDEX_PATH", "data/index.sqlite")). For each question, embed it
+with engine.ingest.embed.embed_texts unless the --bm25-only flag is given (then pass
+query_vec=None), run engine.index.hybrid.hybrid_search with empty Filters and top_k=5, and
+count a hit when any result's document filename equals expected_filename. Print one line per
+question with HIT or MISS and the top result filename, then "recall@5 = X/N (P%)".
 
-Run: uv run python eval/run.py
+Also rewrite eval/questions.json with 10 questions taken from the key_fact column of
+samples/MANIFEST.md: 5 in Malay, 5 in English, and make at least 4 of them target a document
+written in the other language.
+
+Run: uv run python eval/run.py --bm25-only
 ```
 
 ## C1 FastAPI skeleton and models (Cyndia)
@@ -213,8 +231,8 @@ SearchResult, SearchResponse, AskRequest, Citation, AskResponse, UploadResponse,
 HealthResponse from contracts/api.md. Use Literal types for the enums.
 
 Lifespan: open engine.index.store.SqliteStore(os.environ.get("INDEX_PATH",
-"data/index.sqlite")) and set app.state.store. If SqliteStore raises NotImplementedError
-(B1 not done yet), set app.state.store = None and log a warning instead of crashing.
+"data/index.sqlite")) and set app.state.store. If that raises NotImplementedError (B1 not
+done yet), set app.state.store = engine.testing.FakeStore() and log a warning.
 
 Test: with fastapi.testclient, GET /health returns 200 and a body with ok=True.
 
@@ -230,9 +248,9 @@ Package: api/. Create api/search.py and api/test_search.py. Register the router 
 api/main.py.
 
 POST /search takes SearchRequest, embeds request.query with
-engine.ingest.embed.embed_texts([query])[0], calls engine.index.hybrid.hybrid_search with
-Filters built from request.filters and top_k=request.top_k (default 10, max 50), and
-returns SearchResponse. Return 503 {"error": "index not ready"} if app.state.store is None.
+engine.ingest.embed.embed_texts([query])[0]; if that raises, log it and use query_vec=None
+(BM25 only). Call engine.index.hybrid.hybrid_search with Filters built from request.filters
+and top_k=request.top_k (default 10, max 50), and return SearchResponse.
 
 Test: monkeypatch embed_texts and hybrid_search to return fixed values and assert the
 response shape matches SearchResponse.
