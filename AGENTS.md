@@ -41,8 +41,8 @@ Rules for every coding agent and every human on this repo. `CLAUDE.md` and
 - Python 3.11+ with `uv`. FastAPI, pydantic v2. PyMuPDF for all PDF work.
 - Index: `SqliteStore` on SQLite, rank_bm25 and numpy, behind `IndexStore`.
 - AWS: Textract as a stretch, and Bedrock.
-- Embeddings: `amazon.titan-embed-text-v2:0` via boto3.
-- Claude: the `anthropic` SDK's `AnthropicBedrockMantle(aws_region=...)`. Model IDs are in `.env`.
+- Embeddings: Cohere Embed Multilingual v3 (`cohere.embed-multilingual-v3`, 1024 dims) on Bedrock in `ap-southeast-1`, via boto3. Titan v2 is not offered there. Documents embed as `search_document`; API code embeds questions with `input_type="query"`.
+- Claude: the `anthropic` SDK's `AnthropicBedrockMantle(aws_region=...)`. Model IDs are in `.env` and are pending a retest after AWS account verification.
 - Region is in `.env`. The default is `ap-southeast-1`. Confirm model access in the console.
 - Fallback: Groq free tier for tagging and answers when Bedrock fails, via `GROQ_API_KEY`. No embedding fallback; search drops to BM25 only.
 - No paid services. Bedrock runs on a $100 credit with a $1 budget alert.

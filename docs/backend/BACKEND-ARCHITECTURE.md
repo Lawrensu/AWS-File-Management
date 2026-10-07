@@ -30,7 +30,7 @@ engine/ingest/            A. File to chunks with text, page, bbox, keywords, tag
 	prompts/tagger.md       exists, tagger prompt and validation rules
 	extract.py              (planned) A1 PyMuPDF pages and blocks
 	chunker.py              (planned) A2 page chunks
-	embed.py                (planned) A3 Titan embeddings, cached
+	embed.py                (planned) A3 Cohere embeddings on Bedrock, cached
 	tagger.py               (planned) A4 Claude Haiku tags
 	keywords.py             (planned) A5 language and YAKE keywords
 	pipeline.py             (planned) A6 ingest_file and the CLI
@@ -112,7 +112,7 @@ Required: `chunk_id`, `doc_id`, `page`, `text`, `lang`, `source`
 - `bbox: [x0, y0, x1, y1] | null` PDF points, origin top-left, of the first text block in the chunk
 - `text: str` not empty
 - `lang: str` `ms`, `en` or `mixed`
-- `embedding: list[float] | null` 1024 floats from Titan v2, stored, never returned by the API
+- `embedding: list[float] | null` 1024 floats from Cohere Embed Multilingual v3, stored, never returned by the API
 
 Id conventions:
 - `doc_id` is the sha256 of the file bytes, first 16 hex, so ingest is idempotent
@@ -123,7 +123,7 @@ Id conventions:
 Code in `engine/ingest/`, none of it is built yet. Steps from PLAN A1 to A7:
 1. A1 `extract_pages(path: str | Path) -> list[Page]` with PyMuPDF, text and blocks with bbox, `is_scanned` when a page has under 50 characters
 2. A2 `chunk_pages(doc_id: str, pages: list[Page], max_tokens: int = 800, overlap: int = 100) -> list[dict]` per page, 800 words with 100 overlap, keeps page and first-block bbox
-3. A3 `embed_texts(texts) -> np.ndarray` 1024 dims, rows normalised, Titan v2 via boto3, batched, cached by sha256 in `~/.cache/rujuk/embed.sqlite`, `EMBED_FAKE=1` returns deterministic hash-seeded vectors
+3. A3 `embed_texts(texts, input_type="document") -> np.ndarray` 1024 dims, rows normalised, Cohere Embed Multilingual v3 via boto3 `invoke_model` in `ap-southeast-1`, batches of 96, cached by sha256 of model, input type and text in `~/.cache/rujuk/embed.sqlite`, `EMBED_FAKE=1` returns deterministic hash-seeded vectors
 4. A4 `tag_document(filename, text) -> dict` Claude Haiku on Bedrock, prompt in `engine/ingest/prompts/tagger.md`, bad JSON falls back, never fails ingest
 5. A5 `detect_lang(text) -> str` and `extract_keywords(text, lang, top_k=10) -> list[str]` with langdetect and YAKE
 6. A6 `ingest_file(path, store) -> IngestResult` idempotent on `doc_id`, CLI `python -m engine.ingest <folder>` ingests all files, then calls `resolve_supersession(store)` once
@@ -189,14 +189,19 @@ Code in `engine/index/`. All access goes through `IndexStore`.
 ## LLM Providers
 
 - Bedrock is primary, model IDs and region come from `.env`, never hardcoded:
-	- `BEDROCK_EMBED_MODEL` (Titan Text Embeddings v2)
+	- `BEDROCK_EMBED_MODEL` (Cohere Embed Multilingual v3, `cohere.embed-multilingual-v3`)
 	- `BEDROCK_TAG_MODEL` (Claude Haiku)
 	- `BEDROCK_ANSWER_MODEL` (Claude Sonnet) via `AnthropicBedrockMantle(aws_region=...)`
 - Groq free tier is the fallback for tagging and answers, `GROQ_API_KEY`, `GROQ_TAG_MODEL`, `GROQ_ANSWER_MODEL`, empty key disables it
 - No embedding fallback, search drops to BM25 only (`query_vec=None`)
 - On Groq, `/ask` uses the top 5 chunks instead of 8, to fit the free tier's token limit
 - A Bedrock failure must never crash ingest or the API
+- Embeddings use Cohere request fields `texts`, `input_type` and `truncate: END`
+- Documents embed with `input_type="document"` (`search_document`), the default. API code embeds questions with `input_type="query"` (`search_query`). The two are cached separately
+- Cohere v3 truncates input past 512 tokens (`truncate: END` drops the tail). Seed-corpus pages fit under that: the largest chunk is 381 words. The token count is not measured, so confirm it on the first real run. Real documents with chunks near the 800 word cap would be truncated
+- A model ID starting with `amazon.titan` switches `embed_texts` back to the Titan v2 request, one text per call, so going back is a config change
 - AWS credentials exist only on Lawrence's machine, the vertical slice and the demo run there
+- Claude model IDs are pending a retest after AWS account verification
 - `engine/llm.py` (planned) will hold the shared Bedrock call and Groq fallback, added after A4 and C3 are done
 
 ## Prompts
@@ -254,7 +259,7 @@ Requirement names follow [System Design](../SYSTEM-DESIGN.md). A planned item is
 - Chunk by page at 800 words with 100 overlap: `chunk_pages` (planned) -> none -> `Chunk`
 - Extract keywords and detect language: `extract_keywords`, `detect_lang` (planned) -> none -> `Document.keywords`, `lang`
 - Tag from a closed taxonomy and find what a document supersedes: `tag_document` (planned) -> none -> `Document` fields
-- Embed with Titan v2: `embed_texts` (planned) -> none -> embedding never returned
+- Embed with Cohere Embed Multilingual v3: `embed_texts` (planned) -> none -> embedding never returned
 - Write to the index, idempotent on `doc_id`: `ingest_file` (planned), `IndexStore.upsert_document`, `upsert_chunks` -> `POST /documents/upload` (planned) -> upload response
 - Resolve supersession after the whole folder: `resolve_supersession` -> `POST /documents/upload` (planned) -> `status`, `superseded_by`
 - Search by meaning in both languages: `embed_texts` (planned), `hybrid_search`, `bm25_search`, `vector_search` -> `POST /search` (planned) -> `SearchResult`
@@ -269,7 +274,7 @@ Requirement names follow [System Design](../SYSTEM-DESIGN.md). A planned item is
 - Questions are `{question, expected_filename}`, compared by filename stem, so a manifest `.md` matches the indexed `.pdf`
 - Embeds every question in one batched call through `engine.ingest.embed.embed_texts` (planned), falls back to BM25 only if that module is missing
 - `--bm25-only` skips embeddings and needs no AWS, `EMBED_FAKE=1` also runs BM25 only
-- B notes: BM25 only recall@5 is 5/10 on the seed corpus, real Titan vectors not measured yet
+- B notes: BM25 only recall@5 is 5/10 on the seed corpus, real Cohere vectors not measured yet
 
 ---
 
@@ -277,7 +282,7 @@ Requirement names follow [System Design](../SYSTEM-DESIGN.md). A planned item is
 
 - Build `engine/ingest/` A1 to A6, then A7 Textract as a stretch
 - Build `api/` C1 to C5, and `api/models.py`
-- Run the eval with real Titan vectors and tune `CROSS_LANGUAGE_OFFSET` (planned for 2:30)
+- Run the eval with real Cohere vectors and tune `CROSS_LANGUAGE_OFFSET` (planned for 2:30)
 
 ---
 

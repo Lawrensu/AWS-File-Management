@@ -67,8 +67,9 @@ chat. Everything else runs in parallel against `FakeStore` or mock JSON.
 - A2 [A] `chunk_pages(doc_id, pages) -> list[Chunk]`. Per page, 800 words, 100 overlap,
   keep page and first-block bbox.
   Done: short page gives 1 chunk, long page gives n, ids unique.
-- A3 [H] `embed_texts(texts) -> np.ndarray`, 1024 dims, rows normalised. Titan v2 via boto3,
-  batched, cached by sha256 in `~/.cache/rujuk/embed.sqlite`. Keep an `EMBED_FAKE=1` branch
+- A3 [H] `embed_texts(texts) -> np.ndarray`, 1024 dims, rows normalised. Cohere Embed Multilingual v3 on
+  Bedrock via boto3, `input_type="document"` for ingest and `"query"` for questions, batches of 96,
+  cached by sha256 in `~/.cache/rujuk/embed.sqlite`. Keep an `EMBED_FAKE=1` branch
   that returns deterministic hash-seeded vectors.
   Done: repeat call makes zero API calls.
 - A4 [H] `tag_document(filename, text) -> dict` via Claude Haiku on Bedrock. Prompt and

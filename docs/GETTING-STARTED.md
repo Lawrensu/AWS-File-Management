@@ -30,6 +30,8 @@ cp .env.example .env
 
 - Set `AWS_PROFILE` and `AWS_REGION`. The default region is `ap-southeast-1`.
 - Model IDs are `BEDROCK_EMBED_MODEL`, `BEDROCK_TAG_MODEL` and `BEDROCK_ANSWER_MODEL`.
+- Embeddings use Cohere Embed Multilingual v3 (`cohere.embed-multilingual-v3`) in `ap-southeast-1`. Enable model access for it in the Bedrock console.
+- Claude model IDs are pending a retest after AWS account verification.
 - Check Bedrock model access in the console for your region. If a model is only on a cross-region inference profile, put that ID in `.env`.
 - Confirm your credentials work.
 ```bash

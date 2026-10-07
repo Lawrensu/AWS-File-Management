@@ -13,7 +13,7 @@ the plan and what A, C and D need to match.
 - B3 `resolve_supersession`: done (`supersession.py`).
 - B4 eval runner and 10 questions: done (`eval/run.py`, `eval/questions.json`).
 - Tests: 52 passing, all on `FakeStore` except `test_store.py`, which tests `SqliteStore`.
-- Not done: the eval with real Titan vectors. It needs AWS, so it runs on Lawrence's machine
+- Not done: the eval with real Cohere vectors. It needs AWS, so it runs on Lawrence's machine
   at 2:30.
 
 ## Ahead of the plan
@@ -86,7 +86,7 @@ None of these change `contracts/` or the `IndexStore` method signatures.
 
 - The superseded document stays in results below its replacement, with the badge. It is
   not removed.
-- Demo Q1 (Malay question, English circular) needs live Titan embeddings. There is no
+- Demo Q1 (Malay question, English circular) needs live Cohere embeddings. There is no
   embedding fallback. With BM25 only, the English circular is not found.
 - Demo Q3 search on the seed corpus with BM25 only ranks 02, 02, 10, 01 (superseded),
   01 (superseded). The 2024 circular is first and the badge shows at position 4.
@@ -107,7 +107,7 @@ pairs = resolve_supersession(store)                  # [(old_doc_id, new_doc_id)
 
 ```
 uv run python eval/run.py --bm25-only     # no AWS
-uv run python eval/run.py                 # embeds the questions with Titan (A3)
+uv run python eval/run.py                 # embeds the questions with Cohere (A3)
 ```
 
 ## Tuning knobs
@@ -140,7 +140,7 @@ no chunks until Textract lands.
 | 3 | 0.70 | 1.00 | 0.88 | 1.00 |
 | 5 | 0.66 | 0.88 | 0.70 | 1.00 |
 
-  Same-language questions never lost first place. Simulated vectors are not Titan: confirm
+  Same-language questions never lost first place. Simulated vectors are not Cohere: confirm
   at 2:30, and tune `CROSS_LANGUAGE_OFFSET` there.
 
 ## Known limitations

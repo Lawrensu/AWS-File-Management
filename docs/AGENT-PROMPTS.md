@@ -205,7 +205,7 @@ Package: eval/. Create eval/run.py. Do not write tests for this one; it is a scr
 
 Read eval/questions.json, a list of {"question": str, "expected_filename": str}. Open
 SqliteStore(os.environ.get("INDEX_PATH", "data/index.sqlite")). For each question, embed it
-with engine.ingest.embed.embed_texts unless the --bm25-only flag is given (then pass
+with engine.ingest.embed.embed_texts(texts, input_type="query") unless the --bm25-only flag is given (then pass
 query_vec=None), run engine.index.hybrid.hybrid_search with empty Filters and top_k=5, and
 count a hit when any result's document filename equals expected_filename. Print one line per
 question with HIT or MISS and the top result filename, then "recall@5 = X/N (P%)".
@@ -248,7 +248,7 @@ Package: api/. Create api/search.py and api/test_search.py. Register the router 
 api/main.py.
 
 POST /search takes SearchRequest, embeds request.query with
-engine.ingest.embed.embed_texts([query])[0]; if that raises, log it and use query_vec=None
+engine.ingest.embed.embed_texts([query], input_type="query")[0]; if that raises, log it and use query_vec=None
 (BM25 only). Call engine.index.hybrid.hybrid_search with Filters built from request.filters
 and top_k=request.top_k (default 10, max 50), and return SearchResponse.
 
