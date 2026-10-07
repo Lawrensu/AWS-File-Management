@@ -18,8 +18,14 @@ def state(store: FakeStore, doc_id: str) -> tuple[str, str | None]:
     return doc["status"], doc["superseded_by"]
 
 
-def doc(doc_id: str, title: str, year: int | None, supersedes: list[str] | None = None,
-        filename: str | None = None, **fields) -> dict:  # fmt: skip
+def doc(
+    doc_id: str,
+    title: str,
+    year: int | None,
+    supersedes: list[str] | None = None,
+    filename: str | None = None,
+    **fields,
+) -> dict:
     return make_document(
         doc_id,
         title=title,

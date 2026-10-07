@@ -7,9 +7,18 @@ from engine.index.hybrid import SUPERSEDED_RANK_OFFSET, Filters, hybrid_search, 
 from engine.testing import FakeStore, make_chunk, make_document
 
 RESULT_KEYS = {
-    "chunk_id", "doc_id", "title", "page", "snippet", "score", "doc_type", "department",
-    "status", "superseded_by", "lang",
-}  # fmt: skip
+    "chunk_id",
+    "doc_id",
+    "title",
+    "page",
+    "snippet",
+    "score",
+    "doc_type",
+    "department",
+    "status",
+    "superseded_by",
+    "lang",
+}
 
 
 def doc_id(i: int) -> str:
