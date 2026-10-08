@@ -2,32 +2,49 @@
 
 Rujuk is document search and Q&A for government agencies, built for an AWS hackathon in 4 hours. It ingests PDFs, including scans, and indexes them with hybrid keyword and vector search. Staff ask in Malay or English and get cited answers with the source page highlighted.
 
+## Update
+We won as champion. :D 
+```
+"Sila RUJUK aura di bawah"
+- Lawrence
+```
+![Winning picture](docs/pics/Aura.JPG)
+
+We won!
+
+![Winning picture](docs/pics/Champion.jpeg)
+
+
 ## What it does
 
-- **Search by meaning.** Find the right circular, SOP or minutes in plain language, not exact keywords.
-- **Cited answers.** Ask a question and get a short answer where every claim links to its document and page.
-- **One click to the source.** The cited page opens with the passage highlighted, so staff can verify it.
-- **Bilingual.** Ask in Malay or English and get answers from documents in either language.
-- **Knows what is outdated.** When a newer circular replaces an older one, the old one is badged as superseded and ranked lower.
-- **Department view.** Each view shows that department's documents plus general ones.
-- **Built on AWS.** Amazon Bedrock runs the embeddings and Claude, with the Groq free tier as a fallback.
+- **Search by meaning.** Find the right circular, SOP or minutes in plain language, not exact keywords
+- **Cited answers.** Ask a question and get a short answer where every claim links to its document and page
+- **One click to the source.** The cited page opens with the passage highlighted, so staff can verify it
+- **Bilingual.** Ask in Malay or English and get answers from documents in either language
+- **Knows what is outdated.** When a newer circular replaces an older one, the old one is badged as superseded and ranked lower
+- **Department view.** Each view shows that department's documents plus general ones
+- **Built on AWS.** Amazon Bedrock runs the embeddings and Claude, with the Groq free tier as a fallback
 
 ## Team
 
-- Lawrence Lian Anak Matius Ding (102789563): Prepped the repo, UI, seed corpus, demo
+- Lawrence Lian Anak Matius Ding (102789563) (Team Leader): Prepped the repo, UI, seed corpus, demo
 - Malissa (104394134): ingest pipeline
 - Noah (104403881): index and retrieval
 - Cyndia (104381602): API and answer generation
 
 ## Screenshots
 
-Search results with tags and the Superseded badge:
+Search results screenshot:
 
-![Search results with tags and the Superseded badge](docs/screenshots/search.png)
+![Search results](docs/screenshots/search.png)
 
-For ask screenshot document:
+For view the document with highlighted keywords screenshot:
 
-![A cited answer in Malay from an English document](docs/screenshots/ask.png)
+![View the document with highlighted keywords screenshot](docs/screenshots/view.png)
+
+For ask page screenshot document:
+
+![Ask page screenshot](docs/screenshots/ask.png)
 
 ## Documentation
 
@@ -41,9 +58,3 @@ For ask screenshot document:
 - [contracts/README.md](contracts/README.md): read before touching any shared data shape or API route.
 - [AGENTS.md](AGENTS.md): read for repo rules, layout, stack, and the docs writing convention.
 
-## Submission checklist
-
-- Repository is public
-- README lists all group members
-- README has 2 to 3 screenshots
-- `docs/DEMO.md` has the three demo questions and the backup recording link
